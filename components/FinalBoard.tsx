@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import DraftBoard from './DraftBoard';
 import type { PublicRoom } from '@/lib/rooms';
 
@@ -14,6 +15,19 @@ export function resultsText(room: PublicRoom): string {
 
 export default function FinalBoard({ room }: { room: PublicRoom }) {
   const locks = room.outcomes!.order.map((athlete, i) => ({ pick: i + 1, athlete }));
+  const [verdict, setVerdict] = useState<string | null>(null);
+
+  async function verify() {
+    const bytes = new TextEncoder().encode(room.seed!);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+    setVerdict(
+      hex === room.seedHash
+        ? '✅ Verified: hash matches the pre-reveal commitment.'
+        : '❌ MISMATCH — this should never happen.'
+    );
+  }
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <p className="display text-sm text-[var(--accent)]">Final results</p>
@@ -28,6 +42,13 @@ export default function FinalBoard({ room }: { room: PublicRoom }) {
         <p>Committed hash: <code className="stat">{room.seedHash}</code></p>
         <p>Revealed seed: <code className="stat">{room.seed}</code></p>
         <p className="mt-1">sha256(seed) must equal the hash shown in the lobby before the reveal.</p>
+        <button
+          onClick={verify}
+          className="display mt-3 rounded border border-[var(--line)] px-4 py-2 text-xs text-[var(--text)]"
+        >
+          Verify in your browser
+        </button>
+        {verdict && <p className="mt-2">{verdict}</p>}
       </div>
     </main>
   );

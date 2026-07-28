@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PublicRoom } from '@/lib/rooms';
 import { lockedPicks, stateAt } from '@/lib/timeline';
 import { EVENT_META } from '@/lib/types';
+import { sound } from '@/lib/sound';
 import DraftBoard from './DraftBoard';
 import Confetti from './Confetti';
 import LaneRace, { type EventStageProps } from './events/LaneRace';
@@ -22,6 +23,7 @@ function EventStage(props: EventStageProps) {
 
 export default function Broadcast({ room, now }: { room: PublicRoom; now: () => number }) {
   const [, tick] = useState(0);
+  const [soundOn, setSoundOn] = useState(false);
   useEffect(() => {
     const t = setInterval(() => tick(x => x + 1), 100);
     return () => clearInterval(t);
@@ -33,6 +35,16 @@ export default function Broadcast({ room, now }: { room: PublicRoom; now: () => 
   const locks = lockedPicks(outcomes, elapsed);
   const allLocked = locks.length === room.names.length;
 
+  const prevRef = useRef({ phaseKey: '', locks: 0 });
+  useEffect(() => {
+    const prev = prevRef.current;
+    const phaseKey = state.kind === 'event' ? `${state.eventIndex}:${state.phase}` : state.kind;
+    if (phaseKey !== prev.phaseKey && state.kind === 'event' && state.phase === 'run') sound.whistle();
+    if (locks.length > prev.locks) sound.lock();
+    if (locks.length === room.names.length && prev.locks < room.names.length) sound.horn();
+    prevRef.current = { phaseKey, locks: locks.length };
+  });
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-8" style={{ containerType: 'inline-size' }}>
       <header className="mb-6 flex items-center justify-between border-b border-[var(--line)] pb-3">
@@ -40,6 +52,17 @@ export default function Broadcast({ room, now }: { room: PublicRoom; now: () => 
         <span className="stat text-sm text-[var(--muted)]">
           {state.kind === 'event' ? EVENT_META[outcomes.events[state.eventIndex].type].label : 'Draft Board'}
         </span>
+        <button
+          onClick={() => {
+            if (soundOn) sound.disable();
+            else sound.enable();
+            setSoundOn(!soundOn);
+          }}
+          aria-label="toggle sound"
+          className="text-lg"
+        >
+          {soundOn ? '🔊' : '🔇'}
+        </button>
       </header>
 
       {state.kind === 'event' && (
