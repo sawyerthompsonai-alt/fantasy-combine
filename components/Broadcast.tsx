@@ -111,6 +111,14 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
           </div>
         )}
 
+        {/* Temporary placeholder — Task 7 replaces this with the real
+            ShowOpen scene (title card + per-manager walk-up). */}
+        {state.kind === 'open' && (
+          <div className="flex flex-1 items-center justify-center">
+            <p className="display text-2xl">THE FANTASY DRAFT COMBINE</p>
+          </div>
+        )}
+
         {state.kind === 'event' && event && (
           <EventScene
             event={event}

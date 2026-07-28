@@ -1,10 +1,11 @@
 import type { Outcomes } from './types';
 
 export type EventPhase = 'intro' | 'turn' | 'results' | 'elimination' | 'run';
+export type OpenPhase = 'title' | 'walkup';
 
 export interface Segment {
   eventIndex: number;
-  phase: EventPhase;
+  phase: EventPhase | OpenPhase;
   startMs: number;
   endMs: number;
   turnIndex?: number;
@@ -13,6 +14,8 @@ export interface Segment {
 
 export type BroadcastState =
   | { kind: 'pregame' }
+  | { kind: 'open'; phase: OpenPhase; athlete?: number; walkupIndex?: number;
+      phaseElapsedMs: number; phaseDurationMs: number }
   | { kind: 'event'; eventIndex: number; phase: EventPhase;
       phaseElapsedMs: number; phaseDurationMs: number;
       turnIndex?: number; athlete?: number }
@@ -23,6 +26,8 @@ export type BroadcastState =
 // (that event's single pick locks at the midpoint) -> gap. The finale
 // (champ40) is simultaneous head-to-head: intro -> run -> results, with pick
 // 2 locking partway through results and pick 1 locking later in results.
+export const TITLE_MS = 4000;
+export const WALKUP_MS = 2500;
 export const INTRO_MS = 3000;
 export const TURN_MS = 4000;
 export const RESULTS_MS = 4000;
@@ -34,9 +39,25 @@ export const FINALE_PICK2_LOCK_OFFSET_MS = 1500;
 export const FINALE_PICK1_LOCK_OFFSET_MS = 3500;
 export const ELIMINATION_LOCK_OFFSET_MS = ELIMINATION_MS / 2;
 
-export function buildTimeline(outcomes: Outcomes): { segments: Segment[]; totalMs: number } {
+export function buildTimeline(
+  outcomes: Outcomes
+): { segments: Segment[]; totalMs: number; gaps: { startMs: number; endMs: number }[] } {
   const segments: Segment[] = [];
+  const gaps: { startMs: number; endMs: number }[] = [];
   let cursor = 0;
+
+  // Cold open: title card, then one walk-up per manager in athlete-index
+  // order (0..n-1) — NOT outcomes.order, which is the show's secret draft
+  // order and must not leak here.
+  segments.push({ eventIndex: -1, phase: 'title', startMs: cursor, endMs: cursor + TITLE_MS });
+  cursor += TITLE_MS;
+  outcomes.order.forEach((_, i) => {
+    segments.push({ eventIndex: -1, phase: 'walkup', startMs: cursor, endMs: cursor + WALKUP_MS, athlete: i, turnIndex: i });
+    cursor += WALKUP_MS;
+  });
+  gaps.push({ startMs: cursor, endMs: cursor + GAP_MS });
+  cursor += GAP_MS;
+
   outcomes.events.forEach((e, i) => {
     const push = (phase: EventPhase, dur: number, extra?: { turnIndex: number; athlete: number }) => {
       segments.push({ eventIndex: i, phase, startMs: cursor, endMs: cursor + dur, ...extra });
@@ -54,10 +75,11 @@ export function buildTimeline(outcomes: Outcomes): { segments: Segment[]; totalM
       lanes.forEach((athlete, turnIndex) => push('turn', TURN_MS, { turnIndex, athlete }));
       push('results', RESULTS_MS);
       push('elimination', ELIMINATION_MS);
+      gaps.push({ startMs: cursor, endMs: cursor + GAP_MS });
       cursor += GAP_MS;
     }
   });
-  return { segments, totalMs: cursor };
+  return { segments, totalMs: cursor, gaps };
 }
 
 // A gap between events isn't its own segment: once elapsedMs passes an
@@ -75,10 +97,20 @@ export function stateAt(outcomes: Outcomes, elapsedMs: number): BroadcastState {
     if (elapsedMs >= s.startMs) current = s;
     else break;
   }
+  if (current.eventIndex === -1) {
+    return {
+      kind: 'open',
+      phase: current.phase as OpenPhase,
+      phaseElapsedMs: Math.min(elapsedMs, current.endMs) - current.startMs,
+      phaseDurationMs: current.endMs - current.startMs,
+      ...(current.athlete !== undefined ? { athlete: current.athlete } : {}),
+      ...(current.turnIndex !== undefined ? { walkupIndex: current.turnIndex } : {}),
+    };
+  }
   return {
     kind: 'event',
     eventIndex: current.eventIndex,
-    phase: current.phase,
+    phase: current.phase as EventPhase,
     phaseElapsedMs: Math.min(elapsedMs, current.endMs) - current.startMs,
     phaseDurationMs: current.endMs - current.startMs,
     ...(current.turnIndex !== undefined ? { turnIndex: current.turnIndex } : {}),

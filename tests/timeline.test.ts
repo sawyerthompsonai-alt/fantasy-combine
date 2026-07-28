@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { deriveOutcomes } from '@/lib/outcomes';
 import {
   buildTimeline, stateAt, lockedPicks,
+  TITLE_MS, WALKUP_MS,
   INTRO_MS, TURN_MS, RESULTS_MS, ELIMINATION_MS, GAP_MS,
   FINALE_RUN_MS, FINALE_RESULTS_MS,
   FINALE_PICK2_LOCK_OFFSET_MS, FINALE_PICK1_LOCK_OFFSET_MS,
@@ -11,10 +12,42 @@ import {
 const names12 = Array.from({ length: 12 }, (_, i) => `T${i}`);
 const outcomes = deriveOutcomes('tl-seed', names12);
 
+describe('cold open', () => {
+  it('show starts with title then one walkup per manager in athlete-index order, then a gap before event 0', () => {
+    const { segments } = buildTimeline(outcomes);
+    expect(segments[0]).toMatchObject({ eventIndex: -1, phase: 'title', startMs: 0, endMs: TITLE_MS });
+    const walkups = segments.filter(s => s.phase === 'walkup');
+    expect(walkups.map(w => w.athlete)).toEqual(names12.map((_, i) => i)); // NOT outcomes.order
+    walkups.forEach((w, i) => {
+      expect(w.startMs).toBe(TITLE_MS + i * WALKUP_MS);
+      expect(w.endMs - w.startMs).toBe(WALKUP_MS);
+    });
+    const firstIntro = segments.find(s => s.eventIndex === 0 && s.phase === 'intro')!;
+    expect(firstIntro.startMs).toBe(TITLE_MS + names12.length * WALKUP_MS + GAP_MS);
+  });
+
+  it('stateAt inside the open returns kind open with walkup athlete', () => {
+    expect(stateAt(outcomes, 100)).toMatchObject({ kind: 'open', phase: 'title' });
+    const s = stateAt(outcomes, TITLE_MS + WALKUP_MS * 2 + 50);
+    expect(s).toMatchObject({ kind: 'open', phase: 'walkup', athlete: 2, walkupIndex: 2, phaseElapsedMs: 50 });
+  });
+
+  it('buildTimeline exposes a gap entry per inter-block boundary', () => {
+    const { gaps } = buildTimeline(outcomes);
+    // open→event0 plus one per non-finale event
+    expect(gaps.length).toBe(1 + outcomes.events.filter(e => e.type !== 'champ40').length);
+    gaps.forEach(g => expect(g.endMs - g.startMs).toBe(GAP_MS));
+  });
+
+  it('total show for 12 managers stays ≤ 8.5 minutes', () => {
+    expect(buildTimeline(outcomes).totalMs).toBeLessThanOrEqual(8.5 * 60_000);
+  });
+});
+
 describe('buildTimeline (pre-finale events)', () => {
   it('produces intro -> one turn per competitor (ascending lane order) -> results -> elimination -> gap, contiguous', () => {
     const { segments } = buildTimeline(outcomes);
-    let cursor = 0;
+    let cursor = TITLE_MS + names12.length * WALKUP_MS + GAP_MS; // after the cold open + its trailing gap
     outcomes.events.forEach((e, i) => {
       if (e.type === 'champ40') return; // finale covered separately
       const eventSegs = segments.filter(s => s.eventIndex === i);
@@ -176,8 +209,11 @@ describe('totalMs scaling', () => {
     expect(outcomes2.events.length).toBe(1);
     expect(outcomes2.events[0].type).toBe('champ40');
     const { segments, totalMs } = buildTimeline(outcomes2);
-    expect(segments.map(s => s.phase)).toEqual(['intro', 'run', 'results']);
-    expect(totalMs).toBe(INTRO_MS + FINALE_RUN_MS + FINALE_RESULTS_MS);
+    // the finale event's own segments (cold open always precedes it)
+    const finaleSegs = segments.filter(s => s.eventIndex !== -1);
+    expect(finaleSegs.map(s => s.phase)).toEqual(['intro', 'run', 'results']);
+    const openMs = TITLE_MS + outcomes2.order.length * WALKUP_MS + GAP_MS;
+    expect(totalMs).toBe(openMs + INTRO_MS + FINALE_RUN_MS + FINALE_RESULTS_MS);
   });
 
   it('n=20 caps at 12 total events (11 pre-finale + finale)', () => {
