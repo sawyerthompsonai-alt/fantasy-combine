@@ -3,6 +3,7 @@ import {
   DASH_BEATS, SPRINT_START_FRAC, cameraX, STAT_REVEAL_FRACTION,
   smoothstep, cumulativeDist, easedPathPosition, nearestPlant, routeU,
   benchLockouts, staggeredSpin, doublePumpScaleY, dampedKeyframes,
+  dampedHops, periodicPulse,
   type Point,
 } from '@/components/scene/turnChoreo';
 
@@ -321,5 +322,56 @@ describe('dampedKeyframes', () => {
   it('clamps outside [0, 1] to the nearest endpoint value', () => {
     expect(dampedKeyframes(-0.5, points)).toBeCloseTo(6);
     expect(dampedKeyframes(1.5, points)).toBeCloseTo(0);
+  });
+});
+
+describe('dampedHops', () => {
+  it('returns 0 at the start, midpoint, and end (ball at rest between/after hops)', () => {
+    expect(dampedHops(0, 6, 2.4)).toBeCloseTo(0);
+    expect(dampedHops(0.5, 6, 2.4)).toBeCloseTo(0);
+    expect(dampedHops(1, 6, 2.4)).toBeCloseTo(0);
+  });
+
+  it("peaks (upward, i.e. negative) at the first hop's quarter mark", () => {
+    expect(dampedHops(0.25, 6, 2.4)).toBeCloseTo(-6);
+  });
+
+  it("peaks at the second, smaller hop's three-quarter mark", () => {
+    expect(dampedHops(0.75, 6, 2.4)).toBeCloseTo(-2.4);
+  });
+
+  it('the second hop is shallower than the first when amp2 < amp1', () => {
+    expect(Math.abs(dampedHops(0.75, 6, 2.4))).toBeLessThan(Math.abs(dampedHops(0.25, 6, 2.4)));
+  });
+
+  it('clamps outside [0, 1] to the nearest endpoint value (0)', () => {
+    expect(dampedHops(-0.5, 6, 2.4)).toBeCloseTo(0);
+    expect(dampedHops(1.5, 6, 2.4)).toBeCloseTo(0);
+  });
+});
+
+describe('periodicPulse', () => {
+  it('is at full strength exactly at a period boundary', () => {
+    expect(periodicPulse(0, 4, 0.1)).toBeCloseTo(1);
+    expect(periodicPulse(0.25, 4, 0.1)).toBeCloseTo(1);
+  });
+
+  it('decays linearly across the pulse fraction', () => {
+    expect(periodicPulse(0.05, 4, 0.1)).toBeCloseTo(0.5);
+  });
+
+  it('is 0 once past the pulse fraction, for the rest of the period', () => {
+    expect(periodicPulse(0.2, 4, 0.1)).toBe(0);
+    expect(periodicPulse(0.24, 4, 0.1)).toBe(0);
+  });
+
+  it('repeats every period across multiple boundaries', () => {
+    expect(periodicPulse(0.5, 4, 0.1)).toBeCloseTo(1);
+    expect(periodicPulse(0.75, 4, 0.1)).toBeCloseTo(1);
+  });
+
+  it('is always 0 for a non-positive count or fraction', () => {
+    expect(periodicPulse(0, 0, 0.1)).toBe(0);
+    expect(periodicPulse(0, 4, 0)).toBe(0);
   });
 });

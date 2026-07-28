@@ -350,3 +350,32 @@ export function dampedKeyframes(u: number, points: Array<[number, number]>): num
   }
   return points[points.length - 1][1];
 }
+
+// --- Gauntlet (JUGS thrower) -------------------------------------------
+
+/** Two decaying "hop" bounces as a vertical offset (negative = upward) over
+ * u∈[0,1]: the first, taller hop peaks at u=0.25, the second (smaller) hop
+ * peaks at u=0.75, both returning to 0 at u=0, 0.5 and 1 — a dropped ball
+ * settling on the ground. Pure function of (u, amp1, amp2); no timers, no
+ * randomness, so a viewer joining mid-bounce lands on the correct height. */
+export function dampedHops(u: number, amp1: number, amp2: number): number {
+  const c = clamp01(u);
+  if (c < 0.5) {
+    const local = c / 0.5;
+    return -amp1 * Math.sin(Math.PI * local);
+  }
+  const local = (c - 0.5) / 0.5;
+  return -amp2 * Math.sin(Math.PI * local);
+}
+
+/** A recoil/impulse pulse that fires once at every `1/count`-th boundary of
+ * progress (e.g. a JUGS machine's kick at each of `count` evenly spaced
+ * launches): 1 right at the boundary, decaying linearly to 0 over `frac` of
+ * progress, 0 for the remainder of the period. Pure function of (progress,
+ * count, frac) — no timers, no randomness. */
+export function periodicPulse(progress: number, count: number, frac: number): number {
+  if (count <= 0 || frac <= 0) return 0;
+  const period = 1 / count;
+  const local = clamp01(progress) % period;
+  return local < frac ? 1 - local / frac : 0;
+}
