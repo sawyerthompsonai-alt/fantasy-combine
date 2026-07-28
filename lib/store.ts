@@ -48,6 +48,7 @@ class RedisStore implements RoomStore {
   constructor(private redis: Redis) {}
 
   async getRoom(id: string, _now: number): Promise<Room | null> {
+    void _now;
     return ((await this.redis.get<Room>(`room:${id}`)) as Room | null) ?? null;
   }
   async putRoom(room: Room): Promise<void> {
