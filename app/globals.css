@@ -36,3 +36,139 @@ body {
   letter-spacing: 0.08em;
   font-weight: 800;
 }
+
+/* ---------------------------------------------------------------------
+ * Combine scene: turf field chrome, broadcast overlays, athlete rig.
+ * ------------------------------------------------------------------- */
+
+.crowd-band {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 14px),
+    linear-gradient(180deg, #05070a 0%, #0a0d13 78%, transparent 100%);
+}
+
+.live-dot span {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+}
+
+@keyframes tile-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.55); }
+  50% { transform: scale(1.045); box-shadow: 0 0 0 8px rgba(245, 166, 35, 0); }
+}
+.tile-pulse {
+  animation: tile-pulse 900ms ease-in-out 3;
+}
+
+@keyframes board-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+.board-in {
+  animation: board-in 400ms ease-out;
+}
+
+@keyframes lt-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Athlete skeletal poses. Each pose class lives on the outer <g>; leg/arm
+ * groups are addressed as descendants so every pose can drive them
+ * independently. No JS timers involved — purely CSS keyframe loops keyed
+ * off the `pose` prop, so rendering stays a deterministic function of
+ * props (no Math.random). */
+@keyframes ath-idle-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-1.5px) rotate(0.4deg); }
+}
+.ath-pose-idle { animation: ath-idle-bob 2.4s ease-in-out infinite; }
+
+@keyframes ath-run-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes ath-run-leg-front {
+  0%, 100% { transform: rotate(38deg); }
+  50% { transform: rotate(-38deg); }
+}
+@keyframes ath-run-leg-back {
+  0%, 100% { transform: rotate(-38deg); }
+  50% { transform: rotate(38deg); }
+}
+@keyframes ath-run-arm-front {
+  0%, 100% { transform: rotate(-32deg); }
+  50% { transform: rotate(32deg); }
+}
+@keyframes ath-run-arm-back {
+  0%, 100% { transform: rotate(32deg); }
+  50% { transform: rotate(-32deg); }
+}
+.ath-pose-run { animation: ath-run-bounce 0.42s ease-in-out infinite; }
+.ath-pose-run .ath-leg-front { animation: ath-run-leg-front 0.42s linear infinite; }
+.ath-pose-run .ath-leg-back { animation: ath-run-leg-back 0.42s linear infinite; }
+.ath-pose-run .ath-arm-front { animation: ath-run-arm-back 0.42s linear infinite; }
+.ath-pose-run .ath-arm-back { animation: ath-run-arm-front 0.42s linear infinite; }
+
+@keyframes ath-jump-body {
+  0%   { transform: translateY(0) scaleY(1); }
+  18%  { transform: translateY(5px) scaleY(0.86); }
+  42%  { transform: translateY(-20px) scaleY(1.06); }
+  62%  { transform: translateY(-20px) scaleY(1.06); }
+  85%  { transform: translateY(3px) scaleY(0.9); }
+  100% { transform: translateY(0) scaleY(1); }
+}
+@keyframes ath-jump-leg-front {
+  0%, 100% { transform: rotate(8deg); }
+  18% { transform: rotate(46deg); }
+  50% { transform: rotate(-6deg); }
+  85% { transform: rotate(30deg); }
+}
+@keyframes ath-jump-leg-back {
+  0%, 100% { transform: rotate(-8deg); }
+  18% { transform: rotate(-46deg); }
+  50% { transform: rotate(6deg); }
+  85% { transform: rotate(-30deg); }
+}
+@keyframes ath-jump-arm {
+  0%, 100% { transform: rotate(10deg); }
+  40% { transform: rotate(-140deg); }
+  70% { transform: rotate(-140deg); }
+}
+.ath-pose-jump { animation: ath-jump-body 2s ease-in-out infinite; }
+.ath-pose-jump .ath-leg-front { animation: ath-jump-leg-front 2s ease-in-out infinite; }
+.ath-pose-jump .ath-leg-back { animation: ath-jump-leg-back 2s ease-in-out infinite; }
+.ath-pose-jump .ath-arm-front,
+.ath-pose-jump .ath-arm-back { animation: ath-jump-arm 2s ease-in-out infinite; }
+
+@keyframes ath-catch-shuffle {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(4px); }
+  75% { transform: translateX(-4px); }
+}
+@keyframes ath-catch-arm-reach {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(-95deg); }
+}
+@keyframes ath-catch-leg {
+  0%, 100% { transform: rotate(6deg); }
+  50% { transform: rotate(-6deg); }
+}
+.ath-pose-catch { animation: ath-catch-shuffle 1.1s ease-in-out infinite; }
+.ath-pose-catch .ath-arm-front { animation: ath-catch-arm-reach 1.1s ease-in-out infinite; }
+.ath-pose-catch .ath-arm-back { animation: ath-catch-arm-reach 1.1s ease-in-out infinite reverse; }
+.ath-pose-catch .ath-leg-front { animation: ath-catch-leg 1.1s ease-in-out infinite; }
+.ath-pose-catch .ath-leg-back { animation: ath-catch-leg 1.1s ease-in-out infinite reverse; }
+
+@keyframes ath-lift-arm {
+  0%, 100% { transform: rotate(78deg) translateY(0); }
+  50% { transform: rotate(6deg) translateY(-7px); }
+}
+.ath-pose-lift .ath-arm-front,
+.ath-pose-lift .ath-arm-back { animation: ath-lift-arm 0.9s ease-in-out infinite; }
+.ath-pose-lift .ath-leg-front { transform: rotate(4deg); }
+.ath-pose-lift .ath-leg-back { transform: rotate(-4deg); }
