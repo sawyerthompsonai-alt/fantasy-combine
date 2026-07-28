@@ -23,12 +23,18 @@ function scalePct(value: number, [lo, hi]: [number, number], [outLo, outHi]: [nu
 }
 
 // --- Vertical jump: vertec geometry ----------------------------------------
-// Pole at x 58%, a rack of 12 flags spanning the bottom 24% -> 70% of the
+// Pole at x 58%, a rack of 12 flags spanning the bottom 32% -> 70% of the
 // stage. `reachedFlags` (1..12) is how many flags — counted from the bottom
 // — the athlete's measured reach clears; those spin away on the swat while
 // the ones above stay put, which is the entire visual story of the event.
+// RACK_BOTTOM=32 (not the ~24 a static reading of LowerThird's clearance
+// would suggest) because the lowest flag's *rotated* bounding box during its
+// spin-away — swinging around `origin-left` through up to 140deg — swings
+// its far corner measurably lower than its resting position; verified live
+// (390x350 + a 24-char name) that the worst frame of that swing still clears
+// LowerThird's top edge with margin.
 const VERTEC_X = 58;
-const RACK_BOTTOM = 24;
+const RACK_BOTTOM = 32;
 const RACK_TOP = 70;
 const FLAG_COUNT = 12;
 const FLAG_INDEXES = Array.from({ length: FLAG_COUNT }, (_, i) => i);
@@ -112,7 +118,14 @@ const MAT_TICKS = [6, 7, 8, 9, 10, 11]; // feet, evenly spread across the mat
 // content that grows upward past that bar the way the athlete figure does,
 // so it needs real clearance rather than the ~8% the original tape/tick
 // concept used, or its labels render unreadably underneath the bar.
-const BOARD_BOTTOM = 16;
+//
+// LowerThird is now a bounded single-line bar (see components/scene/
+// LowerThird.tsx), so its height is predictable — but at the shortest
+// realistic viewport (390x350) with the longest realistic name (24 chars,
+// lib/rooms.ts's cap), it still measures ~296px from the viewport bottom
+// (verified live via getBoundingClientRect). Matching RACK_BOTTOM (below)
+// keeps a ~15px clearance margin at that worst case with room to spare.
+const BOARD_BOTTOM = 24;
 const BOARD_H = 6;
 const TAPE_Y = BOARD_BOTTOM + BOARD_H; // mat/board top surface
 const ATH_GROUND_Y = BOARD_BOTTOM + BOARD_H / 2; // feet roughly mid-board

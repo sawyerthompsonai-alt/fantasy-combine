@@ -303,6 +303,21 @@ describe('dampedKeyframes', () => {
     expect(b).toBeGreaterThan(c);
   });
 
+  it('eases with smoothstep rather than interpolating linearly mid-segment', () => {
+    // Segment u=0 (6) -> u=1/3 (-4); sample at local=0.25 through that
+    // segment (u = 1/3 * 0.25). smoothstep(0.25) = 0.15625, well below the
+    // linear 0.25, so the eased value sits measurably closer to the start
+    // keyframe than a straight lerp would — this fails if `smoothstep(local)`
+    // were ever swapped for plain `local`, unlike the monotonicity check
+    // above (which a linear ramp also satisfies).
+    const u = (1 / 3) * 0.25;
+    const value = dampedKeyframes(u, points);
+    const eased = 6 + (-4 - 6) * smoothstep(0.25);
+    const linear = 6 + (-4 - 6) * 0.25;
+    expect(value).toBeCloseTo(eased);
+    expect(Math.abs(value - linear)).toBeGreaterThan(0.5);
+  });
+
   it('clamps outside [0, 1] to the nearest endpoint value', () => {
     expect(dampedKeyframes(-0.5, points)).toBeCloseTo(6);
     expect(dampedKeyframes(1.5, points)).toBeCloseTo(0);

@@ -37,22 +37,22 @@ export default function LowerThird({
         }`}
       >
         <div className={`w-1.5 shrink-0 ${tone === 'alert' ? 'bg-red-500' : 'bg-[var(--accent)]'}`} />
-        <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 bg-[var(--panel)]/95 px-3 py-2 backdrop-blur-sm">
-          <span className="display text-[11px] text-[var(--accent)] sm:text-xs">{label}</span>
+        <div className="flex flex-1 flex-nowrap items-center gap-x-3 overflow-hidden bg-[var(--panel)]/95 px-3 py-2 backdrop-blur-sm">
+          <span className="display shrink-0 text-[11px] text-[var(--accent)] sm:text-xs">{label}</span>
           {round !== undefined && round > 1 && (
-            <span className="display rounded border border-[var(--line)] px-1.5 py-0.5 text-[9px] text-[var(--muted)]">
+            <span className="display shrink-0 rounded border border-[var(--line)] px-1.5 py-0.5 text-[9px] text-[var(--muted)]">
               ROUND {round}
             </span>
           )}
 
           {message ? (
-            <span className={`display text-sm sm:text-base ${tone === 'alert' ? 'text-red-400' : 'text-[var(--text)]'}`}>
+            <span className={`display min-w-0 flex-1 truncate text-sm sm:text-base ${tone === 'alert' ? 'text-red-400' : 'text-[var(--text)]'}`}>
               {message}
             </span>
           ) : (
             <>
               {athleteName && (
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text)] sm:text-base">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold text-[var(--text)] sm:text-base">
                   {athleteColor && (
                     <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: athleteColor }} />
                   )}
@@ -60,7 +60,7 @@ export default function LowerThird({
                 </span>
               )}
               {statValue && (
-                <span className="stat ml-auto text-base text-[var(--accent)] sm:text-lg">
+                <span className="stat ml-auto shrink-0 text-base text-[var(--accent)] sm:text-lg">
                   {statLabel && <span className="mr-1 text-[10px] text-[var(--muted)]">{statLabel}</span>}
                   {statValue}
                 </span>
