@@ -19,10 +19,15 @@ const TURF_GRADIENT = 'linear-gradient(180deg, #16321f 0%, #0f2216 55%, #0a1a10 
 /**
  * Full-viewport combine scene chrome: a dark header band up top, a set-
  * specific ground below, and a vignette tying it together. `children` is
- * the stage content (athletes, lower thirds, etc); `furniture` is a slot
- * for event props (cones, rack, mat, pole) anchored near the bottom of the
- * ground. `set` swaps the ground (and, for indoor/sideline sets, the header
- * band too) — see `SceneSet`.
+ * the stage content (athletes, lower thirds, etc), rendered in a stage
+ * layer that is `absolute inset-0` against the ground (not `relative
+ * h-full`) so it has a real, definite height — `h-full` can't resolve here
+ * since the outer column only has `min-h-dvh`, not an explicit height.
+ * Because the stage layer has real height, `absolute`-positioned full-bleed
+ * children (see `sets/TrackLines`) size correctly against it. `furniture`
+ * is a slot for event props (cones, rack, mat, pole) anchored near the
+ * bottom of the ground. `set` swaps the ground (and, for indoor/sideline
+ * sets, the header band too) — see `SceneSet`.
  */
 export default function Field({
   children,
@@ -94,7 +99,7 @@ export default function Field({
           <div className="pointer-events-none absolute inset-x-0 bottom-[8%] flex justify-center">{furniture}</div>
         )}
 
-        <div className="relative z-10 flex h-full flex-col">{children}</div>
+        <div className="absolute inset-0 z-10 flex flex-col">{children}</div>
       </div>
     </div>
   );

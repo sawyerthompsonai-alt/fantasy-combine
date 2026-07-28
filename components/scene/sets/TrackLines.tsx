@@ -5,15 +5,16 @@
  * conversion to the 300%-wide layer's own coordinate space lives here so
  * callers never have to think about the layer's width.
  *
- * `position: fixed` (not `absolute`) — scenes render this as a Field
- * `children` descendant, and Field's children wrapper sizes to content
- * rather than stretching to the ground's height (same reason LowerThird
- * uses `fixed` instead of `absolute`), so anchoring to the viewport is what
- * actually fills the screen here.
+ * `position: absolute` (not `fixed`) — Field's stage layer (the `children`
+ * wrapper) is itself `absolute inset-0` against the ground, so it has real
+ * height and this can size normally against it. `fixed` would break under a
+ * transformed ancestor (e.g. FinaleScene's run-phase camera-zoom wrapper),
+ * since a CSS `transform` establishes a new containing block that `fixed`
+ * resolves against instead of the viewport.
  */
 export default function TrackLines({ offsetPct }: { offsetPct: number }) {
   return (
-    <div aria-hidden className="fixed inset-0 overflow-hidden">
+    <div aria-hidden className="absolute inset-0 overflow-hidden">
       <svg
         className="absolute inset-y-0 h-full"
         viewBox="0 0 300 100"
