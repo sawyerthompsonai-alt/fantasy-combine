@@ -3,7 +3,7 @@ import { initials } from '../Avatar';
 /** Skeletal animation cycle the figure performs. Each maps to a set of CSS
  * keyframes in app/globals.css (`.ath-pose-*`) — purely declarative, no
  * timers or randomness, so the same pose always renders identically. */
-export type AthletePose = 'idle' | 'run' | 'jump' | 'catch' | 'lift';
+export type AthletePose = 'idle' | 'run' | 'jump' | 'catch' | 'lift' | 'stance' | 'walk' | 'celebrate';
 
 export interface AthleteProps {
   name: string;
@@ -19,6 +19,10 @@ export interface AthleteProps {
   spotlight?: boolean;
   /** Show the name chip below the figure. Defaults to true. */
   showName?: boolean;
+  /** Duration (seconds) of one run/walk limb cycle — lets callers match the
+   * rig's stride rate to the athlete's actual ground speed. Defaults to the
+   * base sprint cadence (0.42s). */
+  runCycleSec?: number;
   className?: string;
 }
 
@@ -34,6 +38,7 @@ export default function Athlete({
   dimmed = false,
   spotlight = false,
   showName = true,
+  runCycleSec = 0.42,
   className = '',
 }: AthleteProps) {
   const width = size * (44 / 92);
@@ -41,7 +46,12 @@ export default function Athlete({
   return (
     <div className={`inline-flex flex-col items-center gap-1 transition-opacity duration-300 ${dimmed ? 'opacity-40' : 'opacity-100'} ${className}`}>
       <div
-        style={{ width, height: size, transform: facing === 'left' ? 'scaleX(-1)' : undefined }}
+        style={{
+          width,
+          height: size,
+          transform: facing === 'left' ? 'scaleX(-1)' : undefined,
+          ['--run-cycle' as string]: `${runCycleSec}s`,
+        }}
         className={spotlight ? 'drop-shadow-[0_0_16px_rgba(245,166,35,0.55)]' : ''}
       >
         <svg viewBox="0 0 44 92" width="100%" height="100%" role="img" aria-label={name}>

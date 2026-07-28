@@ -81,7 +81,11 @@ body {
  * groups are addressed as descendants so every pose can drive them
  * independently. No JS timers involved — purely CSS keyframe loops keyed
  * off the `pose` prop, so rendering stays a deterministic function of
- * props (no Math.random). */
+ * props (no Math.random). Pivot at hip level so whole-body rotate() poses
+ * (e.g. the stance crouch) pitch naturally instead of swinging from the
+ * SVG's default top-left origin. */
+.ath-figure { transform-origin: 22px 49px; }
+
 @keyframes ath-idle-bob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-1.5px) rotate(0.4deg); }
@@ -108,11 +112,12 @@ body {
   0%, 100% { transform: rotate(32deg); }
   50% { transform: rotate(-32deg); }
 }
-.ath-pose-run { animation: ath-run-bounce 0.42s ease-in-out infinite; }
-.ath-pose-run .ath-leg-front { animation: ath-run-leg-front 0.42s linear infinite; }
-.ath-pose-run .ath-leg-back { animation: ath-run-leg-back 0.42s linear infinite; }
-.ath-pose-run .ath-arm-front { animation: ath-run-arm-back 0.42s linear infinite; }
-.ath-pose-run .ath-arm-back { animation: ath-run-arm-front 0.42s linear infinite; }
+/* run cycle speed follows ground speed via --run-cycle (Task 4) */
+.ath-pose-run { animation: ath-run-bounce var(--run-cycle, 0.42s) ease-in-out infinite; }
+.ath-pose-run .ath-leg-front { animation: ath-run-leg-front var(--run-cycle, 0.42s) linear infinite; }
+.ath-pose-run .ath-leg-back { animation: ath-run-leg-back var(--run-cycle, 0.42s) linear infinite; }
+.ath-pose-run .ath-arm-front { animation: ath-run-arm-back var(--run-cycle, 0.42s) linear infinite; }
+.ath-pose-run .ath-arm-back { animation: ath-run-arm-front var(--run-cycle, 0.42s) linear infinite; }
 
 @keyframes ath-jump-body {
   0%   { transform: translateY(0) scaleY(1); }
@@ -172,3 +177,30 @@ body {
 .ath-pose-lift .ath-arm-back { animation: ath-lift-arm 0.9s ease-in-out infinite; }
 .ath-pose-lift .ath-leg-front { transform: rotate(4deg); }
 .ath-pose-lift .ath-leg-back { transform: rotate(-4deg); }
+
+/* 3-point stance: static crouch — torso pitched forward, legs coiled, one arm planted */
+.ath-pose-stance { transform: rotate(34deg) translateY(14%); }
+.ath-pose-stance .ath-leg-front { transform: rotate(-46deg); }
+.ath-pose-stance .ath-leg-back { transform: rotate(-18deg); }
+.ath-pose-stance .ath-arm-front { transform: rotate(-58deg); }
+.ath-pose-stance .ath-arm-back { transform: rotate(10deg); }
+
+/* walk: run keyframes at low amplitude, slow cycle */
+@keyframes ath-walk-leg {
+  0%, 100% { transform: rotate(14deg); }
+  50% { transform: rotate(-14deg); }
+}
+.ath-pose-walk .ath-leg-front { animation: ath-walk-leg 0.9s ease-in-out infinite; }
+.ath-pose-walk .ath-leg-back { animation: ath-walk-leg 0.9s ease-in-out infinite reverse; }
+.ath-pose-walk .ath-arm-front { animation: ath-walk-leg 0.9s ease-in-out infinite reverse; }
+.ath-pose-walk .ath-arm-back { animation: ath-walk-leg 0.9s ease-in-out infinite; }
+.ath-pose-walk { animation: ath-idle-bob 0.9s ease-in-out infinite; }
+
+/* celebrate: arms pinned up, springy hop */
+@keyframes ath-celebrate-hop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9%); }
+}
+.ath-pose-celebrate { animation: ath-celebrate-hop 0.55s ease-in-out infinite; }
+.ath-pose-celebrate .ath-arm-front { transform: rotate(190deg); }
+.ath-pose-celebrate .ath-arm-back { transform: rotate(-190deg); }
