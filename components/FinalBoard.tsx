@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import DraftBoard from './DraftBoard';
+import { seededShuffle } from '@/lib/shuffle';
 import type { PublicRoom } from '@/lib/rooms';
 
 export function resultsText(room: PublicRoom): string {
@@ -21,10 +22,17 @@ export default function FinalBoard({ room }: { room: PublicRoom }) {
     const bytes = new TextEncoder().encode(room.seed!);
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     const hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+    const hashOk = hex === room.seedHash;
+
+    const rederivedOrder = seededShuffle(room.names.map((_, i) => i), room.seed!, 'order');
+    const orderOk = rederivedOrder.every((athlete, i) => athlete === room.outcomes!.order[i]);
+
     setVerdict(
-      hex === room.seedHash
-        ? '✅ Verified: hash matches the pre-reveal commitment.'
-        : '❌ MISMATCH — this should never happen.'
+      hashOk && orderOk
+        ? '✅ Verified: hash matches and the draft order re-derives from the seed.'
+        : !hashOk
+        ? '❌ MISMATCH — sha256(seed) does not match the committed hash.'
+        : '❌ MISMATCH — the draft order does not re-derive from the seed.'
     );
   }
 

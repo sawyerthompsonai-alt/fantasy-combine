@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getStore, __resetStoreForTests, ROOM_TTL_MS, PRESENCE_WINDOW_MS } from '@/lib/store';
 import type { Room } from '@/lib/types';
 
@@ -30,5 +30,37 @@ describe('memory RoomStore', () => {
     await store.touchPresence('r1', 'v2', 8000); // same viewer, refreshed
     expect(await store.presenceCount('r1', 9000)).toBe(2);
     expect(await store.presenceCount('r1', 1000 + PRESENCE_WINDOW_MS + 1)).toBe(1);
+  });
+});
+
+describe('getStore on Vercel without KV credentials', () => {
+  const savedVercel = process.env.VERCEL;
+  const savedKvUrl = process.env.KV_REST_API_URL;
+  const savedKvToken = process.env.KV_REST_API_TOKEN;
+  const savedUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const savedUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  beforeEach(() => {
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.VERCEL = '1';
+  });
+
+  afterEach(() => {
+    const restore = (key: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    };
+    restore('VERCEL', savedVercel);
+    restore('KV_REST_API_URL', savedKvUrl);
+    restore('KV_REST_API_TOKEN', savedKvToken);
+    restore('UPSTASH_REDIS_REST_URL', savedUpstashUrl);
+    restore('UPSTASH_REDIS_REST_TOKEN', savedUpstashToken);
+  });
+
+  it('throws a clear error instead of silently falling back to memory', () => {
+    expect(() => getStore()).toThrow(/KV store not configured/);
   });
 });

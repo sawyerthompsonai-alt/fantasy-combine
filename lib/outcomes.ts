@@ -34,7 +34,13 @@ function buildEvent(
     // jitter < 0.5*|step| in the "worse" direction keeps ordering strict
     const jitter = decimals > 0 ? rng() * 0.4 * Math.abs(step) * (lowerBetter ? 1 : -1) : 0;
     const raw = base + step * i + jitter;
-    performances[athlete] = Number(raw.toFixed(decimals));
+    // count-like stats must stay physically plausible regardless of room size:
+    // bench reps can't go negative, and gauntlet drops can't exceed the balls thrown.
+    const clamped =
+      type === 'bench' ? Math.max(raw, 1) :
+      type === 'gauntlet' ? Math.min(raw, 7) :
+      raw;
+    performances[athlete] = Number(clamped.toFixed(decimals));
   });
   const pickOf = (athlete: number) => order.indexOf(athlete) + 1;
   return {

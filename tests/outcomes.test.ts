@@ -65,4 +65,19 @@ describe('deriveOutcomes', () => {
     expect(events.length).toBe(1);
     expect(events[0].type).toBe('champ40');
   });
+
+  it('count-like stats stay physically plausible for large rooms (20 competitors)', () => {
+    const names20 = Array.from({ length: 20 }, (_, i) => `T${i}`);
+    for (const seed of ['a', 'b', 'c', 'd', 'e', 'sturdy-seed-20']) {
+      const { events } = deriveOutcomes(seed, names20);
+      for (const e of events) {
+        if (e.type === 'bench') {
+          for (const v of Object.values(e.performances)) expect(v).toBeGreaterThanOrEqual(1);
+        }
+        if (e.type === 'gauntlet') {
+          for (const v of Object.values(e.performances)) expect(v).toBeLessThanOrEqual(7);
+        }
+      }
+    }
+  });
 });

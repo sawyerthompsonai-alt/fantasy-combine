@@ -7,13 +7,17 @@ function Control({ id }: { id: string }) {
   const params = useSearchParams();
   const { room, error } = useRoom(id);
   const [token, setToken] = useState<string | null>(null);
+  const [tokenResolved, setTokenResolved] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
-      if (!cancelled) setToken(params.get('token') ?? localStorage.getItem(`combine-admin-${id}`));
+      if (!cancelled) {
+        setToken(params.get('token') ?? localStorage.getItem(`combine-admin-${id}`));
+        setTokenResolved(true);
+      }
     });
     return () => {
       cancelled = true;
@@ -22,14 +26,28 @@ function Control({ id }: { id: string }) {
 
   async function post(action: 'start' | 'reset') {
     setActionError(null);
-    const res = await fetch(`/api/rooms/${id}/${action}`, {
-      method: 'POST', headers: { 'x-admin-token': token ?? '' },
-    });
-    if (!res.ok) setActionError((await res.json()).error ?? 'request failed');
-    setConfirmReset(false);
+    try {
+      const res = await fetch(`/api/rooms/${id}/${action}`, {
+        method: 'POST', headers: { 'x-admin-token': token ?? '' },
+      });
+      if (!res.ok) {
+        let message = 'request failed';
+        try {
+          message = (await res.json()).error ?? message;
+        } catch {
+          // non-JSON error body — fall back to the generic message
+        }
+        setActionError(message);
+      }
+    } finally {
+      setConfirmReset(false);
+    }
   }
 
   if (error) return <p className="p-10 text-[var(--muted)]">{error}</p>;
+  if (tokenResolved && !token) {
+    return <p className="display p-10 text-[var(--muted)]">This page needs the control link with its token.</p>;
+  }
   if (!room || !token) return <p className="display p-10 text-[var(--muted)]">Loading control room…</p>;
 
   const watch = `${window.location.origin}/r/${id}`;

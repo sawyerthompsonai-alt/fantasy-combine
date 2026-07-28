@@ -75,6 +75,9 @@ export function getStore(): RoomStore {
     g.__combineRedis ??= new RedisStore(new Redis({ url, token }));
     return g.__combineRedis;
   }
+  if (process.env.VERCEL) {
+    throw new Error('KV store not configured — provision the marketplace Redis integration and redeploy');
+  }
   g.__combineStore ??= new MemoryStore();
   return g.__combineStore;
 }
