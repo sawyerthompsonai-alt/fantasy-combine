@@ -28,17 +28,24 @@ const ZOOM_MAX = 1.22;
  * `LANE_TOP_PCTS` usage below: the wrapper's `translate(-50%, -100%)` puts
  * this percentage at the *bottom* of the whole Athlete component, including
  * its name chip, so the figure extends *upward* from here and needs real
- * headroom above it. Task 15 review finding: the original 30%/60% pair put
- * lane 0 only 30% down the stage — nowhere near enough room above for an
- * ~80px figure + name chip at a short viewport (390x350) before it clips
- * its head off against the stage's top edge, and the finish-line zoom
- * (`ZOOM_MAX`, transform-origin near the finish line) makes it worse by
- * growing the figure further as the run approaches its end. Both values
- * below sit in the same "near the bottom of the stage" range DashScene's
- * own 40-yard sprinter already uses safely at this exact viewport
- * (STANCE_Y=78 there) — verified empirically at progress 0.2/0.5/0.75/0.95,
- * 390x350, see task-15-report.md. */
-const LANE_TOP_PCTS = [64, 82];
+ * headroom above it. Task 15 review round 1 finding: the original 30%/60%
+ * pair put lane 0 only 30% down the stage — nowhere near enough room above
+ * for an ~80px figure + name chip at a short viewport (390x350) before it
+ * clips its head off against the stage's top edge. That was fixed (64/82)
+ * in a prior round, but round 2's re-review measured the two lanes'
+ * wrapper boxes actually *overlapping* at that gap: 64/82 is only 18 points
+ * (~51px of a 286px-tall stage at 390x350) while the wrapper (figure + name
+ * chip) is ~65-90px tall depending on viewport — the anchors were simply
+ * too close together for the figure size, independent of zoom. Live
+ * measurement (not arithmetic — see task-15-report.md round 2) found the
+ * true worst case isn't even the photo-finish zoom: it's the gun-start lean
+ * (`sprintLean`, see `FINALE_LEAN_MAX_DEG` below), whose rotated wrapper's
+ * axis-aligned bounding box is taller than the unrotated one because the
+ * name chip is wide relative to the figure. 44 points (~126px raw at this
+ * viewport) — roughly double the old gap — clears every measured
+ * checkpoint (0.14 gun-start lean peak through 0.99 photo-finish zoom) with
+ * real margin. */
+const LANE_TOP_PCTS = [38, 76];
 
 /** Run-phase athlete figure height: `vh`-clamped (small on a short
  * viewport, the original 80px on a normal one) rather than a fixed px
@@ -47,8 +54,40 @@ const LANE_TOP_PCTS = [64, 82];
  * applied here for extra margin on top of `LANE_TOP_PCTS` once the
  * finish-line zoom scales the figure up. `sm:`-and-up viewports are tall
  * enough that this clamps at its 80px ceiling, matching the original size
- * exactly — desktop is unaffected. */
-const RUN_ATH_SIZE = 'clamp(52px, 20vh, 80px)';
+ * exactly — desktop is unaffected. Round 2 review: tightened the vh factor
+ * (20vh -> 14vh) for extra margin against `LANE_TOP_PCTS`'s wider gap at
+ * very short viewports; the 80px ceiling is unchanged so nothing above the
+ * `sm:` breakpoint moves. */
+const RUN_ATH_SIZE = 'clamp(46px, 14vh, 80px)';
+
+/** Cap on the gun-start forward lean (`sprintLean`'s `maxDeg`) for the
+ * finale's run phase only — every other caller of `sprintLean` (e.g.
+ * DashScene's single sprinter) keeps the shared default (-22deg) since it
+ * has no adjacent lane to overlap into. Round 2 review: at the full -22deg
+ * default, the wrapper's *rotated* bounding box (the name chip is wide
+ * relative to the figure, so tilting it sweeps a lot of extra vertical
+ * space) peaks at ~130px tall at 390x350 right at the gun (`progress` ==
+ * `FINALE_GUN_FRACTION`) — taller than either the frozen photo-finish's
+ * zoomed figure or the resting figure, and the single largest contributor
+ * to the round-2 overlap finding. Capping the lean itself (rather than only
+ * widening `LANE_TOP_PCTS` further to swallow a 130px peak) keeps the two
+ * lanes' vertical budget sane without a huge, mostly-empty-looking gap on
+ * every other frame of the race. -10deg still reads as a forward sprint
+ * lean, just less dramatic than the dash events' full-effort burst. */
+const FINALE_LEAN_MAX_DEG = -10;
+
+/** Vertical transform-origin (percent of stage) for the finish-line zoom
+ * below — the lane pair's own vertical midpoint rather than a fixed
+ * "upper-stage" value. `scale()` displaces every point away from the
+ * origin in proportion to its distance from it; pinning the origin near
+ * the runners themselves (instead of well above them) keeps the zoom from
+ * pushing lane 0's head further toward the clip line and lane 1's name
+ * chip further toward LowerThird than the resting (unzoomed) layout
+ * already does — it does not change the *gap* between the two lanes
+ * (scaling a pair of points by a common factor scales their separation by
+ * that same factor regardless of where the origin sits), only how far the
+ * pair as a whole drifts toward the stage's fixed boundaries. */
+const ZOOM_ORIGIN_Y_PCT = (LANE_TOP_PCTS[0] + LANE_TOP_PCTS[1]) / 2;
 
 /** World-space track scale (viewport-% units, matches DashScene's 40-yard
  * dash so `cameraX`'s default anchor/track-max line up with the same
@@ -153,8 +192,10 @@ export default function FinaleScene({
     const finishVx = FINISH_WORLD - cam;
 
     // Lean out of the blocks over the first third of the sprint window.
+    // Capped to FINALE_LEAN_MAX_DEG (see its doc comment) rather than
+    // sprintLean's shared -22deg default.
     const accelU = clamp01((progress - FINALE_GUN_FRACTION) / ((FREEZE_FRACTION - FINALE_GUN_FRACTION) / 3));
-    const lean = isHold ? 0 : sprintLean(accelU);
+    const lean = isHold ? 0 : sprintLean(accelU, FINALE_LEAN_MAX_DEG);
 
     // Suspense beat: the frame darkens slightly through the hold.
     const holdU = clamp01(progress / FINALE_GUN_FRACTION);
@@ -189,7 +230,7 @@ export default function FinaleScene({
             className="absolute inset-0"
             style={{
               transform: `scale(${zoomScale})`,
-              transformOrigin: `${finishVx}% 55%`,
+              transformOrigin: `${finishVx}% ${ZOOM_ORIGIN_Y_PCT}%`,
               filter: frozen ? 'grayscale(0.55) contrast(1.15) brightness(0.82)' : undefined,
             }}
           >
