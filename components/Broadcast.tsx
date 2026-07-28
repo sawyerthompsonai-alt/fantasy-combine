@@ -1,14 +1,16 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { PublicRoom } from '@/lib/rooms';
 import { lockedPicks, stateAt, type BroadcastState, type EventPhase } from '@/lib/timeline';
 import { scoreboardAt } from '@/lib/scoreboard';
 import type { EventResult } from '@/lib/types';
+import { athleteBios } from '@/lib/jokes';
 import { sound } from '@/lib/sound';
 import { useAnimationNow } from '@/lib/useAnimationNow';
 import { STAT_REVEAL_FRACTION } from './scene/turnChoreo';
 import Field, { type SceneSet } from './scene/Field';
+import ShowOpen from './scene/ShowOpen';
 import BoardInterstitial from './scene/BoardInterstitial';
 import Scoreboard from './Scoreboard';
 import DashScene from './scene/events/DashScene';
@@ -75,14 +77,33 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   const locks = lockedPicks(outcomes, elapsed);
   const allLocked = locks.length === room.names.length;
 
+  // Joke seed: `room.seedHash` (not `room.seed`, which is only revealed once
+  // the room is `complete`) is present from the lobby onward, identical for
+  // every viewer, stable across replays of the same room, and reveals
+  // nothing about the outcome — safe to use for the cold open's bios here
+  // and for Task 14's farewell lines later. Memoized so identity is stable
+  // across renders (bios is passed down as a prop).
+  const bios = useMemo(() => athleteBios(room.seedHash, room.names.length), [room.seedHash, room.names.length]);
+
   const prevRef = useRef({ turnKey: '', poppedKey: '', locks: 0, finalFired: false });
   useEffect(() => {
     const prev = prevRef.current;
-    const turnKey = state.kind === 'event' ? `${state.eventIndex}:${state.phase}:${state.turnIndex ?? ''}` : state.kind;
+    const turnKey =
+      state.kind === 'event' ? `${state.eventIndex}:${state.phase}:${state.turnIndex ?? ''}`
+      : state.kind === 'open' && state.phase === 'walkup' ? `open:walkup:${state.walkupIndex}`
+      : state.kind;
 
     // Whistle at each turn/run start.
     if (turnKey !== prev.turnKey && state.kind === 'event' && (state.phase === 'run' || state.phase === 'turn')) {
       sound.whistle();
+    }
+
+    // Cold open: a swell as the title card comes up, a pop as each walk-up
+    // starts (edge-triggered on turnKey, same guard pattern as the rest of
+    // this effect — it runs every animation frame).
+    if (turnKey !== prev.turnKey && state.kind === 'open') {
+      if (state.phase === 'title') sound.swell();
+      else sound.pop();
     }
 
     // Stat "pop" once a turn crosses the shared reveal fraction (matches the
@@ -139,12 +160,17 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
           </div>
         )}
 
-        {/* Temporary placeholder — Task 7 replaces this with the real
-            ShowOpen scene (title card + per-manager walk-up). */}
         {state.kind === 'open' && (
-          <div className="flex flex-1 items-center justify-center">
-            <p className="display text-2xl">THE FANTASY DRAFT COMBINE</p>
-          </div>
+          <ShowOpen
+            phase={state.phase}
+            athlete={state.athlete}
+            walkupIndex={state.walkupIndex}
+            phaseElapsedMs={state.phaseElapsedMs}
+            phaseDurationMs={state.phaseDurationMs}
+            names={room.names}
+            colors={room.colors}
+            bios={bios}
+          />
         )}
 
         {state.kind === 'event' && event && (
