@@ -113,44 +113,16 @@ export default function EventFrame({
   }
 
   if (phase === 'results') {
+    // `scoreboard` is always supplied in production — Broadcast.tsx builds
+    // a populated `scoreboardNode` (Scoreboard.tsx's ExpandedBoard) for
+    // every event's results phase (scoreboardAt returns non-null for every
+    // kind==='event' state) and every EventFrame caller spreads it straight
+    // through. An inline fallback `<ol>` used to render here for a caller
+    // that didn't pass one, but nothing ever exercised that path — removed
+    // as dead code per Task 16's review (Minor #4).
     return (
       <>
-        <div className="flex-1 overflow-y-auto px-3 pb-32 pt-6 sm:px-6">
-          {scoreboard ?? (
-            // Task 15 review (Finding 2): this `.row-in` stagger is inert in
-            // production today — Broadcast.tsx always supplies a populated
-            // `scoreboard` (Scoreboard.tsx's ExpandedBoard) for real events'
-            // results phase, so this inline `<ol>` fallback only actually
-            // renders for a caller that doesn't pass one (e.g. a future
-            // integration, or a test). Left as-is rather than wired into
-            // ExpandedBoard: Scoreboard.tsx is outside this task's file
-            // scope, and the real results screen already gets a non-pop
-            // entrance from Broadcast's Step 3 phase crossfade wrapping the
-            // whole results block. Tracked as a follow-up, not a bug.
-            <ol className="mx-auto flex max-w-xl flex-col gap-1.5">
-              {event.ranking.map((a, i) => {
-                const eliminated = event.eliminated.includes(a);
-                return (
-                  <li
-                    key={a}
-                    className={`row-in flex items-center gap-3 rounded-md border px-3 py-2 ${
-                      eliminated ? 'border-red-500/40 bg-red-950/20' : 'border-[var(--line)] bg-[var(--panel)]/90'
-                    }`}
-                    style={{ animationDelay: `${i * 40}ms` }}
-                  >
-                    <span className="stat w-6 text-right text-[var(--muted)]">{i + 1}</span>
-                    <Athlete name={names[a]} color={colors[a]} pose="idle" size={40} showName={false} dimmed={eliminated} />
-                    <span className="flex-1 truncate text-sm font-semibold sm:text-base">{names[a]}</span>
-                    <span className="stat text-sm sm:text-base">
-                      {event.performances[a].toFixed(meta.decimals)}{meta.unit}
-                    </span>
-                    {eliminated && <span className="display text-[10px] text-red-400">CUT</span>}
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </div>
+        <div className="flex-1 overflow-y-auto px-3 pb-32 pt-6 sm:px-6">{scoreboard}</div>
         <LowerThird visible label={`${meta.label} · RESULTS`} round={event.round} />
       </>
     );

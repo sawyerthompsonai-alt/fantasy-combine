@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { athleteBios, farewellLine } from '@/lib/jokes';
+import { athleteBios, farewellLine, JOKE_POOLS } from '@/lib/jokes';
+
+// The joke rule is G-rated ribbing about fantasy football habits, never
+// about the real person beyond their name — a manager is identified by name
+// only, so no pool entry may attach a gendered honorific or pronoun to
+// whoever gets assigned it (a woman in the league could be handed a "Mr."
+// nickname on the cold-open card otherwise). Deferred from Task 1, added
+// here after Task 16's review caught 'Mr. Autodraft' / 'FAAB Daddy'.
+const GENDERED = /\b(mr|mrs|ms|sir|madam|king|queen|bro|dude|guy|gal|man|woman|boy|girl|he|she|his|her|him|hers|guys|gentleman|lady)\b/i;
 
 describe('athleteBios', () => {
   it('is deterministic: same seed → identical bios', () => {
@@ -23,6 +31,16 @@ describe('athleteBios', () => {
         expect(m.value).toBeTruthy();
       });
     }
+  });
+});
+
+describe('joke pools are free of gendered honorifics and pronouns', () => {
+  it('every entry in every pool passes', () => {
+    Object.entries(JOKE_POOLS).forEach(([poolName, pool]) => {
+      pool.forEach(entry => {
+        expect(entry, `${poolName}: "${entry}"`).not.toMatch(GENDERED);
+      });
+    });
   });
 });
 

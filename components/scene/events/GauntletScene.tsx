@@ -144,10 +144,16 @@ export default function GauntletScene(props: {
                 const windowStart = b / BALLS;
                 const windowEnd = (b + 1) / BALLS;
                 const isDrop = b >= BALLS - drops;
-                const targetX = runwayX(windowEnd);
                 const localT = clamp01((progress - windowStart) / (windowEnd - windowStart));
                 const flightT = Math.min(localT, 0.75) / 0.75;
                 const deflectAt = windowStart + 0.75 * (windowEnd - windowStart);
+                // Aim the flight at the athlete's actual position at deflect
+                // time (not windowEnd) — the flight only ever runs to
+                // localT===0.75 (deflectAt), so aiming past that point made
+                // the ball overshoot the receiver by 70 * 0.25 / BALLS
+                // percentage points before popping to the tuck sprite drawn
+                // at runwayX(progress). See Task 16 review, Important #1.
+                const targetX = runwayX(deflectAt);
 
                 if (progress < windowStart) return null;
 
@@ -208,7 +214,13 @@ export default function GauntletScene(props: {
                     className="absolute"
                     style={{
                       left: `${bx}%`, bottom: `${RUNWAY_BOTTOM}%`,
-                      transform: `translate(-30%, -${TORSO_LIFT_PX}px)`, opacity: fade,
+                      // -50% horizontal, matching the in-flight ball's
+                      // -translate-x-1/2 anchor (and the athlete's own,
+                      // since bx here is the same runwayX(progress) the
+                      // Athlete wrapper below is centered on) — was -30%,
+                      // a mismatched anchor that added ~3px of its own jump
+                      // on top of the targetX overshoot fixed above.
+                      transform: `translate(-50%, -${TORSO_LIFT_PX}px)`, opacity: fade,
                     }}
                   >
                     <BallIcon size={13} />

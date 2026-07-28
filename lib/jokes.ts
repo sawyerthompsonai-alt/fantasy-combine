@@ -1,10 +1,13 @@
 import { seededShuffle } from './shuffle';
 import { createRng } from './rng';
 
+// G-rated ribbing about fantasy football habits only, never about the real
+// person beyond their name — no gendered honorifics or pronouns anywhere in
+// this pool (see tests/jokes.test.ts's regression test).
 const NICKNAMES = [
-  'The Waiver Wire Wizard', 'Mr. Autodraft', 'The Trade Machine', 'Captain Hindsight',
+  'The Waiver Wire Wizard', 'Captain Autodraft', 'The Trade Machine', 'Captain Hindsight',
   'The Bye-Week Gambler', "The Commissioner's Nightmare", 'The Sleeper Whisperer',
-  'The Panic Trader', 'FAAB Daddy', 'The Injury-Report Scholar', 'The Mock Draft Legend',
+  'The Panic Trader', 'FAAB Baron', 'The Injury-Report Scholar', 'The Mock Draft Legend',
   'Bench Warmer General', 'The Vulture', 'The Two-QB Truther', 'Sunday Scaries',
   'The Handcuff Collector', 'The Group Chat Menace', 'Old Reliable (Allegedly)',
   'The Kicker Enthusiast', 'The Comeback Kid (Week 14)', 'The Trash Talk Titan',
@@ -82,3 +85,9 @@ export function farewellLine(seed: string, athlete: number, name: string): strin
   const order = seededShuffle(ROASTS, seed, 'joke:roast');
   return order[athlete % order.length].replaceAll('{name}', name);
 }
+
+/** Test-only access to the raw joke pools (see tests/jokes.test.ts's
+ * gendered-language regression test) — every pool entry is assigned by
+ * seeded shuffle to a real manager by name, so none of them may carry their
+ * own gendered honorific/pronoun regardless of who ends up with it. */
+export const JOKE_POOLS = { NICKNAMES, COLLEGES, HANDS, VERTS, BENCHES, SCOUTING, ROASTS };

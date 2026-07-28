@@ -141,8 +141,8 @@ function fortyPose(progress: number): AthletePose {
 // plantLean, plantRunCycleSec, routeU, dashPhasePose, routeWalkInY,
 // routeJogOffOffset) live in `../turnChoreo` — they're generic over any
 // Point[] waypoint list, not specific to either drill, and living there puts
-// them alongside `pathPosition`/`DASH_BEATS` where `tests/choreo.test.ts`
-// already covers this kind of pure choreography math.
+// them alongside `DASH_BEATS` where `tests/choreo.test.ts` already covers
+// this kind of pure choreography math.
 
 const PLANT_LEAN_DEG = 14;
 

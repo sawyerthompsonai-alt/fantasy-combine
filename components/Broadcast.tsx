@@ -72,11 +72,24 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   // rAF loop in useAnimationNow (never during render) to keep the component
   // pure; `mountTime`/`nowMs` are the render-safe snapshots of it.
   const [mountTime] = useState(() => Date.now());
-  const nowMs = useAnimationNow();
+  const [nowMs, setClockActive] = useAnimationNow();
 
   const outcomes = room.outcomes!;
   const elapsed = replay ? nowMs - mountTime : now() - (room.startTime ?? now());
   const state = stateAt(outcomes, elapsed);
+  // Gates the rAF loop off once the derived state has settled into `final`
+  // — otherwise it free-runs forever on the replay end screen (the room is
+  // already 'complete', so nothing ever unmounts Broadcast the way the live
+  // path's 5s status poll does), re-rendering the whole tree 60x/sec with
+  // zero visual change. `setClockActive` mutates a ref inside
+  // useAnimationNow rather than triggering a re-render itself, so calling
+  // it here is just telling the already-running loop whether to keep
+  // scheduling itself — not a state update that needs its own dependency
+  // dance. Effect (not render-body) because refs must never be
+  // read/written during render.
+  useEffect(() => {
+    setClockActive(state.kind !== 'final');
+  }, [state.kind, setClockActive]);
   const locks = lockedPicks(outcomes, elapsed);
   // Broadcast wipe (Task 15): non-null for a WIPE_MS window straddling each
   // inter-block gap's end — see lib/timeline.ts's transitionAt. Pure
@@ -84,6 +97,23 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   // sweep position instead of a replayed animation.
   const wipe = transitionAt(outcomes, elapsed);
   const allLocked = locks.length === room.names.length;
+  // Stable identity for Confetti's colors prop: `room.colors` is a fresh
+  // array on every poll (live) or on every parent re-render (replay), and
+  // Confetti's one-time piece generation keys off that array's identity
+  // (see components/Confetti.tsx's `useEffect(..., [colors])`) — without
+  // this, all 120 pieces silently restarted from the top on every poll,
+  // forever, on the replay end screen. Same fix Task 13 applied to
+  // FinaleScene's championConfettiColors. `colorsKey` is the joined values
+  // (a plain string, recomputed every render but only ever *changing* when
+  // the actual colors do) so `confettiColors` only produces a new array
+  // identity when the content genuinely changes — colors are '#rrggbb' hex
+  // strings (see lib/rooms.ts's COLORS), so a ',' join/split round-trips
+  // safely. Written this way (deriving the returned array from the same
+  // primitive listed in the deps array) rather than `[room.colors.join(',')]`
+  // directly in the deps position so react-hooks/exhaustive-deps can
+  // statically verify it — that rule requires deps to be simple expressions.
+  const colorsKey = room.colors.join(',');
+  const confettiColors = useMemo(() => colorsKey.split(','), [colorsKey]);
 
   // Joke seed: `room.seedHash` (not `room.seed`, which is only revealed once
   // the room is `complete`) is present from the lobby onward, identical for
@@ -329,7 +359,7 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
         </button>
       </header>
 
-      {allLocked && <Confetti colors={room.colors} />}
+      {allLocked && <Confetti colors={confettiColors} />}
 
       {wipe && <WipeOverlay t={wipe.t} />}
     </div>

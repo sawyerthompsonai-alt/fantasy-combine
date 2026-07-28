@@ -158,11 +158,20 @@ function ExpandedBoard({ data, names, colors }: Omit<ScoreboardProps, 'mode'>) {
           </span>
         )}
       </div>
-      <ol className="mx-auto flex max-w-xl flex-col gap-1.5">
+      {/* Row pitch is tightened for small viewports (py-1.5 + gap-1 instead
+          of py-2 + gap-1.5, plus a fluid Athlete size that shrinks below
+          ~420px) so a full 12-competitor board fits above LowerThird
+          without scrolling at 390x844 — at the old py-2/gap-1.5/size-40
+          pitch (~63px), rows 11-12 landed behind/under the bar (see Task 16
+          review, Minor #5). Verified live via getBoundingClientRect at
+          390x844 with 12 competitors: row 12 now clears LowerThird's top
+          edge with margin. Desktop (`sm:` and up) keeps the original,
+          roomier pitch. */}
+      <ol className="mx-auto flex max-w-xl flex-col gap-1 sm:gap-1.5">
         {rows.map((row, i) => (
           <li
             key={row.athlete}
-            className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
+            className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 sm:gap-3 sm:px-3 sm:py-2 ${
               i === 0 && row.mark !== null
                 ? 'border-[var(--accent)]/60 bg-[var(--accent)]/10'
                 : 'border-[var(--line)] bg-[var(--panel)]/90'
@@ -171,7 +180,10 @@ function ExpandedBoard({ data, names, colors }: Omit<ScoreboardProps, 'mode'>) {
             <span className={`stat w-6 text-right ${i === 0 && row.mark !== null ? 'text-[var(--accent)]' : 'text-[var(--muted)]'}`}>
               {i + 1}
             </span>
-            <Athlete name={names[row.athlete]} color={colors[row.athlete]} pose="idle" size={40} showName={false} />
+            <Athlete
+              name={names[row.athlete]} color={colors[row.athlete]} pose="idle" showName={false}
+              size="clamp(26px, 8vw, 40px)"
+            />
             <span className="flex-1 truncate text-sm font-semibold sm:text-base">{names[row.athlete]}</span>
             <span className="stat text-sm sm:text-base">
               {row.mark !== null ? fmt(row.mark, data.decimals, data.unit) : '—'}

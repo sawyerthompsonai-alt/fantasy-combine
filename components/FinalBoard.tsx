@@ -52,8 +52,8 @@ export default function FinalBoard({ room }: { room: PublicRoom }) {
       </button>
       <div className="mt-8 rounded border border-[var(--line)] p-4 text-sm text-[var(--muted)]">
         <p className="display mb-1 text-xs text-[var(--text)]">Fairness verified</p>
-        <p>Committed hash: <code className="stat">{room.seedHash}</code></p>
-        <p>Revealed seed: <code className="stat">{room.seed}</code></p>
+        <p>Committed hash: <code className="stat break-all">{room.seedHash}</code></p>
+        <p>Revealed seed: <code className="stat break-all">{room.seed}</code></p>
         <p className="mt-1">sha256(seed) must equal the hash shown in the lobby before the reveal.</p>
         <button
           onClick={verify}

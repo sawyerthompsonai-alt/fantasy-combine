@@ -69,34 +69,6 @@ export function edgeFade(progress: number, inFrac = 0.06, outFrac = 0.94): numbe
 
 export interface Point { x: number; y: number }
 
-/** Interpolates a position along a polyline of waypoints (percent-space) by
- * overall path-length fraction t (0..1), plus the direction (dx, dy) of the
- * segment currently being traversed — used to flip an athlete's facing at
- * each direction change. Pure geometry, no randomness. */
-export function pathPosition(waypoints: Point[], t: number): Point & { dx: number; dy: number } {
-  if (waypoints.length < 2) {
-    const p = waypoints[0] ?? { x: 50, y: 50 };
-    return { ...p, dx: 0, dy: 0 };
-  }
-  const clamped = clamp01(t);
-  const segLens = waypoints.slice(1).map((p, i) => Math.hypot(p.x - waypoints[i].x, p.y - waypoints[i].y));
-  const total = segLens.reduce((a, b) => a + b, 0) || 1;
-  const target = clamped * total;
-  let covered = 0;
-  for (let i = 0; i < segLens.length; i++) {
-    const len = segLens[i];
-    if (target <= covered + len || i === segLens.length - 1) {
-      const local = len === 0 ? 0 : clamp01((target - covered) / len);
-      const a = waypoints[i];
-      const b = waypoints[i + 1];
-      return { x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local, dx: b.x - a.x, dy: b.y - a.y };
-    }
-    covered += len;
-  }
-  const last = waypoints[waypoints.length - 1];
-  return { ...last, dx: 0, dy: 0 };
-}
-
 /** Which way an athlete should face given horizontal travel direction;
  * keeps a caller-supplied fallback when the current segment is purely
  * vertical (dx ~ 0). */
@@ -104,12 +76,6 @@ export function facingFromDx(dx: number, fallback: 'left' | 'right' = 'right'): 
   if (dx > 0.01) return 'right';
   if (dx < -0.01) return 'left';
   return fallback;
-}
-
-/** Concave climb curve: fast early progress, decelerating "strain" near the
- * end — used for the bench rep counter. */
-export function strainEase(u: number): number {
-  return Math.sqrt(clamp01(u));
 }
 
 /** Turn-phase beat boundaries for the 40-yard dash, as fractions of overall

@@ -226,6 +226,25 @@ describe('totalMs scaling', () => {
     const all = lockedPicks(outcomes20, totalMs);
     expect(all.map(l => l.pick)).toEqual(Array.from({ length: 20 }, (_, i) => 20 - i));
   });
+
+  it('n=20 pacing ceiling: cold open scales linearly with manager count, well past the ~8-minute promise', () => {
+    // The cold open is TITLE_MS + n*WALKUP_MS + GAP_MS — the per-event
+    // pacing (intro/turn/results/elimination) doesn't grow with n (batch
+    // count is capped at 11, see eliminationBatches), but the walk-up
+    // sequence does, one per manager. At n=20 that's 20*2.5s = 50s of
+    // walk-ups alone. Measured: totalMs === 678_000 (11.3 minutes) for
+    // seed 'tl-seed-20' — well above the product's "~8 minutes" promise
+    // and the n=12 show's 8.03-minute total (see the 5.5-8.5 min test
+    // above). This is a known, accepted tradeoff (Task 16 review, Minor
+    // #7): pinned here explicitly rather than left silent, so a future
+    // change to WALKUP_MS/TITLE_MS/GAP_MS that moves this ceiling has to
+    // update this assertion instead of drifting unnoticed. Not a bug to
+    // fix — do not change the pacing to make this pass a tighter bound.
+    const outcomes20 = deriveOutcomes('tl-seed-20', Array.from({ length: 20 }, (_, i) => `M${i}`));
+    const { totalMs } = buildTimeline(outcomes20);
+    expect(totalMs).toBe(678_000);
+    expect(totalMs / 60_000).toBeCloseTo(11.3, 5);
+  });
 });
 
 describe('transitionAt (broadcast wipe windows)', () => {
