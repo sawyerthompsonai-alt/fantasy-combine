@@ -39,11 +39,27 @@ export default function Broadcast({ room, now }: { room: PublicRoom; now: () => 
   useEffect(() => {
     const prev = prevRef.current;
     const phaseKey = state.kind === 'event' ? `${state.eventIndex}:${state.phase}` : state.kind;
-    if (phaseKey !== prev.phaseKey && state.kind === 'event' && state.phase === 'run') sound.whistle();
+    // v2-temp: 'turn' is the new per-athlete action phase (pre-finale);
+    // 'run' remains the finale's simultaneous head-to-head phase. Both cue
+    // the whistle until Tasks 3-4 give turns their own sound cues.
+    if (phaseKey !== prev.phaseKey && state.kind === 'event' && (state.phase === 'run' || state.phase === 'turn')) sound.whistle();
     if (locks.length > prev.locks) sound.lock();
     if (locks.length === room.names.length && prev.locks < room.names.length) sound.horn();
     prevRef.current = { phaseKey, locks: locks.length };
   });
+
+  // v2-temp: the v1 event renderers (LaneRace/Bench/Measure/Gauntlet) only
+  // understand 'intro' | 'run' | 'results'. Map the v2 per-athlete phases
+  // onto their nearest v1 equivalent so those renderers keep compiling and
+  // render something plausible: 'turn' (per-athlete action) -> 'run'
+  // (action phase), 'elimination' (post-results lock beat) -> 'results'
+  // (final-state phase, eliminated athletes already dimmed). Tasks 3-4
+  // replace these renderers with turn-aware scenes and this mapping goes
+  // away with them.
+  const legacyPhase: EventStageProps['phase'] =
+    state.kind === 'event'
+      ? state.phase === 'turn' ? 'run' : state.phase === 'elimination' ? 'results' : state.phase
+      : 'intro';
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
@@ -69,7 +85,7 @@ export default function Broadcast({ room, now }: { room: PublicRoom; now: () => 
         <EventStage
           event={outcomes.events[state.eventIndex]}
           names={room.names} colors={room.colors}
-          phase={state.phase} phaseElapsedMs={state.phaseElapsedMs} phaseDurationMs={state.phaseDurationMs}
+          phase={legacyPhase} phaseElapsedMs={state.phaseElapsedMs} phaseDurationMs={state.phaseDurationMs}
         />
       )}
       {state.kind !== 'event' && (

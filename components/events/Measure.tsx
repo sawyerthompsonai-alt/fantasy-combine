@@ -5,7 +5,11 @@ import type { EventStageProps } from './LaneRace';
 
 export default function Measure({ event, names, colors, phase, phaseElapsedMs }: EventStageProps) {
   const meta = EVENT_META[event.type];
-  const perAthleteMs = 4000; // matches runMs() = 4000 * competitors
+  // v2-temp: under v2 the 'run' phase this renderer sees is actually a
+  // single 4s per-athlete 'turn' segment (see Broadcast.tsx's legacyPhase
+  // mapping), not one long multi-athlete race. This stays a stale
+  // approximation until Tasks 3-4 replace Measure with a turn-aware scene.
+  const perAthleteMs = 4000;
   const lanes = [...event.competitors].sort((a, b) => a - b);
   const activeIdx = phase === 'run' ? Math.min(lanes.length - 1, Math.floor(phaseElapsedMs / perAthleteMs)) : -1;
   const within = (phaseElapsedMs % perAthleteMs) / perAthleteMs;
