@@ -47,12 +47,14 @@ const PULLUP_WORLD = 165; // deceleration carries the runner this far past the t
 const JOGOFF_WORLD = 170; // slow jog drift to the edge of the course
 const STANCE_Y = 78;
 const WALK_IN_Y_START = 88;
-// Rendered figure height, also used to pin the lean rotation's pivot to the
-// bottom of the SVG figure (its feet) — Athlete stacks a name chip below
-// the figure, so a bare 'center bottom' origin would pivot around the
-// bottom of the chip instead and visibly swing the whole figure sideways.
-// Shared by all three dash drills (forty/threecone/shuttle) for the same
-// reason.
+// Rendered figure height, shared by all three dash drills (forty/threecone/
+// shuttle). forty/threecone pass their lean straight to Athlete's own
+// `leanDeg` prop now (it pivots around its own figure box internally, never
+// the name chip below it — see Athlete.tsx), so this constant no longer
+// needs to double as a rotation pivot for those two. The shuttle's hand-
+// touch "dip" (scaleY squash, not a lean) still wraps Athlete externally and
+// uses this same value for its own pivot, since that effect intentionally
+// squashes the whole component including the chip.
 const ATHLETE_SIZE = 84;
 
 /** Runner's world-x position as a pure function of turn progress. Three
@@ -285,17 +287,16 @@ export default function DashScene(props: {
                   className="absolute"
                   style={{ left: `${vx}%`, top: `${y}%`, transform: 'translate(-50%, -100%)', opacity }}
                 >
-                  <div style={{ transform: `rotate(${lean}deg)`, transformOrigin: `center ${ATHLETE_SIZE}px` }}>
-                    <Athlete
-                      name={names[a]}
-                      color={colors[a]}
-                      pose={pose}
-                      size={ATHLETE_SIZE}
-                      facing="right"
-                      spotlight
-                      runCycleSec={runCycleSec}
-                    />
-                  </div>
+                  <Athlete
+                    name={names[a]}
+                    color={colors[a]}
+                    pose={pose}
+                    size={ATHLETE_SIZE}
+                    facing="right"
+                    spotlight
+                    leanDeg={lean}
+                    runCycleSec={runCycleSec}
+                  />
                 </div>
 
                 {locked && (
@@ -391,17 +392,16 @@ export default function DashScene(props: {
                   className="absolute"
                   style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -100%)', opacity }}
                 >
-                  <div style={{ transform: `rotate(${lean}deg)`, transformOrigin: `center ${ATHLETE_SIZE}px` }}>
-                    <Athlete
-                      name={names[a]}
-                      color={colors[a]}
-                      pose={pose}
-                      size={ATHLETE_SIZE}
-                      facing={facing}
-                      spotlight
-                      runCycleSec={runCycleSec}
-                    />
-                  </div>
+                  <Athlete
+                    name={names[a]}
+                    color={colors[a]}
+                    pose={pose}
+                    size={ATHLETE_SIZE}
+                    facing={facing}
+                    spotlight
+                    leanDeg={lean}
+                    runCycleSec={runCycleSec}
+                  />
                 </div>
 
                 {locked && (

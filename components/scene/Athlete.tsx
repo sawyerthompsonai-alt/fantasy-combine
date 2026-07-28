@@ -27,6 +27,22 @@ export interface AthleteProps {
    * rig's stride rate to the athlete's actual ground speed. Defaults to the
    * base sprint cadence (0.42s). */
   runCycleSec?: number;
+  /** Forward/backward body lean in degrees (negative = leaning forward),
+   * applied ONLY to the SVG figure's own box — never to the name chip
+   * below it. Scene callers (DashScene's sprint burst, FinaleScene's gun
+   * start, 3-cone's plant cuts) used to get this effect by wrapping the
+   * *entire* Athlete (figure + name chip) in an external rotating div, but
+   * the chip is wide and short (up to `max-w-[8rem]`), so rotating it swept
+   * a much taller axis-aligned bounding box than the narrow figure alone —
+   * at a short viewport that bounding box could overlap an adjacent lane
+   * even though the figure itself had plenty of clearance. Composed with
+   * `facing === 'left' -> scaleX(-1)` on this same inner div, in the same
+   * outer-then-inner order the old nested-wrapper version applied them
+   * (rotate around the screen-space box, then mirror within it), so the
+   * visual lean direction is unchanged for existing callers that pass
+   * `facing` but not `leanDeg`. Defaults to 0 (no lean) — fully backward
+   * compatible with every existing call site. */
+  leanDeg?: number;
   className?: string;
 }
 
@@ -43,18 +59,35 @@ export default function Athlete({
   spotlight = false,
   showName = true,
   runCycleSec = 0.42,
+  leanDeg = 0,
   className = '',
 }: AthleteProps) {
   const sizeStyle = typeof size === 'number'
     ? { width: size * (44 / 92), height: size }
     : { height: size, aspectRatio: '44 / 92' };
 
+  // Order matters: rotate first (outer, screen-space), scaleX second (inner,
+  // local-space) — matches the old nested-wrapper structure this replaces
+  // (an outer div doing the lean rotation, wrapping Athlete's own inner div
+  // doing the facing mirror), so existing lean+facing-left combinations
+  // (e.g. the 3-cone drill's plant cuts) read identically to before.
+  const figureTransforms: string[] = [];
+  if (leanDeg) figureTransforms.push(`rotate(${leanDeg}deg)`);
+  if (facing === 'left') figureTransforms.push('scaleX(-1)');
+
   return (
     <div className={`inline-flex flex-col items-center gap-1 transition-opacity duration-300 ${dimmed ? 'opacity-40' : 'opacity-100'} ${className}`}>
       <div
         style={{
           ...sizeStyle,
-          transform: facing === 'left' ? 'scaleX(-1)' : undefined,
+          transform: figureTransforms.length > 0 ? figureTransforms.join(' ') : undefined,
+          // Bottom-center of the figure's own box, as a percentage rather
+          // than a fixed px value — tracks whatever `size` actually
+          // resolves to at runtime (including vh-clamped/string sizes),
+          // unlike the old external wrapper's fixed `center 80px`-style
+          // origin, which silently drifted out of sync whenever a caller
+          // used a viewport-relative size.
+          transformOrigin: '50% 100%',
           ['--run-cycle' as string]: `${runCycleSec}s`,
         }}
         className={spotlight ? 'drop-shadow-[0_0_16px_rgba(245,166,35,0.55)]' : ''}

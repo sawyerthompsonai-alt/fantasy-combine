@@ -24,28 +24,33 @@ const ZOOM_START_FRACTION = 0.68;
 /** Peak zoom multiplier reached at the very end of the run phase. */
 const ZOOM_MAX = 1.22;
 
-/** Run-phase lane vertical anchors (percent of stage, top-anchored — see
- * `LANE_TOP_PCTS` usage below: the wrapper's `translate(-50%, -100%)` puts
- * this percentage at the *bottom* of the whole Athlete component, including
- * its name chip, so the figure extends *upward* from here and needs real
- * headroom above it. Task 15 review round 1 finding: the original 30%/60%
- * pair put lane 0 only 30% down the stage — nowhere near enough room above
- * for an ~80px figure + name chip at a short viewport (390x350) before it
- * clips its head off against the stage's top edge. That was fixed (64/82)
- * in a prior round, but round 2's re-review measured the two lanes'
- * wrapper boxes actually *overlapping* at that gap: 64/82 is only 18 points
- * (~51px of a 286px-tall stage at 390x350) while the wrapper (figure + name
- * chip) is ~65-90px tall depending on viewport — the anchors were simply
- * too close together for the figure size, independent of zoom. Live
- * measurement (not arithmetic — see task-15-report.md round 2) found the
- * true worst case isn't even the photo-finish zoom: it's the gun-start lean
- * (`sprintLean`, see `FINALE_LEAN_MAX_DEG` below), whose rotated wrapper's
- * axis-aligned bounding box is taller than the unrotated one because the
- * name chip is wide relative to the figure. 44 points (~126px raw at this
- * viewport) — roughly double the old gap — clears every measured
- * checkpoint (0.14 gun-start lean peak through 0.99 photo-finish zoom) with
- * real margin. */
-const LANE_TOP_PCTS = [38, 76];
+/** Run-phase lane vertical anchors (percent of stage, top-anchored — the
+ * wrapper's `translate(-50%, -100%)` puts this percentage at the *bottom*
+ * of the whole Athlete component, including its name chip, so the figure
+ * extends *upward* from here and needs real headroom above it.
+ *
+ * History: the original 30/60 pair (round 1) clipped heads against the
+ * stage's top edge at 390x350; 64/82 (round 1 fix) stopped the clipping but
+ * round 2's re-review found the two lanes' wrapper boxes *overlapping*
+ * anyway — because at the time, `sprintLean`'s gun-start rotation was
+ * applied to an external wrapper around the *entire* Athlete (figure + name
+ * chip), and the chip is wide relative to the figure, so tilting it swept a
+ * much taller axis-aligned bounding box (~130px at 390x350) than either the
+ * resting or zoomed figure. Round 2 papered over this by widening the gap
+ * to 38 points and capping the lean at -10deg.
+ *
+ * Round 3 (this fix) removes the root cause instead: `leanDeg` on
+ * `Athlete` now rotates only the figure's own box, never the name chip (see
+ * Athlete.tsx), so the full -22deg lean's rotated bounding box is back down
+ * to ~88px — comparable to the resting figure, not ~130px. Live-measured
+ * (continuous sweep, not checkpoints — see task-15-report.md round 3) that
+ * this lets `LANE_TOP_PCTS` relax from 38 points back to 30 (46/76) with the
+ * full lean restored and real margin to spare at every point 0.14-1.0: worst
+ * pairwise gap +15.9px (near the gun), worst clip-line clearance +38.4px and
+ * worst LowerThird clearance +9.6px (both at the max photo-finish zoom).
+ * Narrower gaps (tried down to 26 points) work but leave under 5px of
+ * margin — not worth the risk for a few more points of stage. */
+const LANE_TOP_PCTS = [46, 76];
 
 /** Run-phase athlete figure height: `vh`-clamped (small on a short
  * viewport, the original 80px on a normal one) rather than a fixed px
@@ -54,27 +59,12 @@ const LANE_TOP_PCTS = [38, 76];
  * applied here for extra margin on top of `LANE_TOP_PCTS` once the
  * finish-line zoom scales the figure up. `sm:`-and-up viewports are tall
  * enough that this clamps at its 80px ceiling, matching the original size
- * exactly — desktop is unaffected. Round 2 review: tightened the vh factor
- * (20vh -> 14vh) for extra margin against `LANE_TOP_PCTS`'s wider gap at
- * very short viewports; the 80px ceiling is unchanged so nothing above the
- * `sm:` breakpoint moves. */
+ * exactly — desktop is unaffected. Round 2 tightened the vh factor
+ * (20vh -> 14vh) to compensate for the lean-wrapper overlap bug; round 3
+ * re-measured with that bug fixed and the full lean restored — 20vh
+ * (the pre-round-2 value) reintroduces negative clip-line clearance near
+ * the finish-line zoom (worst -12.4px at progress 1), so 14vh stays. */
 const RUN_ATH_SIZE = 'clamp(46px, 14vh, 80px)';
-
-/** Cap on the gun-start forward lean (`sprintLean`'s `maxDeg`) for the
- * finale's run phase only — every other caller of `sprintLean` (e.g.
- * DashScene's single sprinter) keeps the shared default (-22deg) since it
- * has no adjacent lane to overlap into. Round 2 review: at the full -22deg
- * default, the wrapper's *rotated* bounding box (the name chip is wide
- * relative to the figure, so tilting it sweeps a lot of extra vertical
- * space) peaks at ~130px tall at 390x350 right at the gun (`progress` ==
- * `FINALE_GUN_FRACTION`) — taller than either the frozen photo-finish's
- * zoomed figure or the resting figure, and the single largest contributor
- * to the round-2 overlap finding. Capping the lean itself (rather than only
- * widening `LANE_TOP_PCTS` further to swallow a 130px peak) keeps the two
- * lanes' vertical budget sane without a huge, mostly-empty-looking gap on
- * every other frame of the race. -10deg still reads as a forward sprint
- * lean, just less dramatic than the dash events' full-effort burst. */
-const FINALE_LEAN_MAX_DEG = -10;
 
 /** Vertical transform-origin (percent of stage) for the finish-line zoom
  * below — the lane pair's own vertical midpoint rather than a fixed
@@ -191,11 +181,14 @@ export default function FinaleScene({
     const cam = cameraX(leaderWorld);
     const finishVx = FINISH_WORLD - cam;
 
-    // Lean out of the blocks over the first third of the sprint window.
-    // Capped to FINALE_LEAN_MAX_DEG (see its doc comment) rather than
-    // sprintLean's shared -22deg default.
+    // Lean out of the blocks over the first third of the sprint window, at
+    // sprintLean's shared -22deg default — same as DashScene's single
+    // sprinter. `leanDeg` is now applied only to Athlete's own figure box
+    // (never the name chip), so the rotated axis-aligned bounding box that
+    // caused the round-2 overlap finding (see LANE_TOP_PCTS's doc comment)
+    // no longer exists; the full lean fits with room to spare.
     const accelU = clamp01((progress - FINALE_GUN_FRACTION) / ((FREEZE_FRACTION - FINALE_GUN_FRACTION) / 3));
-    const lean = isHold ? 0 : sprintLean(accelU, FINALE_LEAN_MAX_DEG);
+    const lean = isHold ? 0 : sprintLean(accelU);
 
     // Suspense beat: the frame darkens slightly through the hold.
     const holdU = clamp01(progress / FINALE_GUN_FRACTION);
@@ -250,17 +243,16 @@ export default function FinaleScene({
                   className="absolute"
                   style={{ left: `${vx}%`, top: `${LANE_TOP_PCTS[i]}%`, transform: 'translate(-50%, -100%)' }}
                 >
-                  <div style={{ transform: `rotate(${lean}deg)`, transformOrigin: 'center 80px' }}>
-                    <Athlete
-                      name={names[a]}
-                      color={colors[a]}
-                      pose={isHold ? 'stance' : 'run'}
-                      size={RUN_ATH_SIZE}
-                      facing="right"
-                      spotlight
-                      runCycleSec={runCycleSec[a]}
-                    />
-                  </div>
+                  <Athlete
+                    name={names[a]}
+                    color={colors[a]}
+                    pose={isHold ? 'stance' : 'run'}
+                    size={RUN_ATH_SIZE}
+                    facing="right"
+                    spotlight
+                    leanDeg={lean}
+                    runCycleSec={runCycleSec[a]}
+                  />
                 </div>
               );
             })}
