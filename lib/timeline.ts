@@ -39,6 +39,15 @@ export const FINALE_PICK2_LOCK_OFFSET_MS = 1500;
 export const FINALE_PICK1_LOCK_OFFSET_MS = 3500;
 export const ELIMINATION_LOCK_OFFSET_MS = ELIMINATION_MS / 2;
 
+/** Fraction of a turn's progress at which the final stat locks in and the
+ * lower-third stops "counting" and shows the true result, bold. Shared by
+ * every per-event scene (and the scoreboard selector) so the broadcast
+ * rhythm (running number -> hard lock) reads consistently across event
+ * types. Lives in lib/ (not components/scene/turnChoreo.ts, which
+ * re-exports it) because lib/scoreboard.ts needs it and lib/ must not
+ * import from components/. */
+export const STAT_REVEAL_FRACTION = 0.7;
+
 export function buildTimeline(
   outcomes: Outcomes
 ): { segments: Segment[]; totalMs: number; gaps: { startMs: number; endMs: number }[] } {

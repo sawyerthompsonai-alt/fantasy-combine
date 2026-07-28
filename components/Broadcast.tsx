@@ -1,14 +1,16 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { PublicRoom } from '@/lib/rooms';
 import { lockedPicks, stateAt, type BroadcastState, type EventPhase } from '@/lib/timeline';
+import { scoreboardAt } from '@/lib/scoreboard';
 import type { EventResult } from '@/lib/types';
 import { sound } from '@/lib/sound';
 import { useAnimationNow } from '@/lib/useAnimationNow';
 import { STAT_REVEAL_FRACTION } from './scene/turnChoreo';
 import Field, { type SceneSet } from './scene/Field';
 import BoardInterstitial from './scene/BoardInterstitial';
+import Scoreboard from './Scoreboard';
 import DashScene from './scene/events/DashScene';
 import JumpScene from './scene/events/JumpScene';
 import GauntletScene from './scene/events/GauntletScene';
@@ -20,6 +22,10 @@ import Confetti from './Confetti';
 interface EventSceneProps {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
+  /** Results-phase leaderboard passed through to EventFrame (see
+   * EventFrameProps.scoreboard) — FinaleScene (champ40) ignores it, since
+   * the finale keeps its own champion-banner results screen. */
+  scoreboard?: ReactNode;
 }
 
 /** Routes each event to its per-event choreography by type: straight/weave/
@@ -108,10 +114,21 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   });
 
   const event = state.kind === 'event' ? outcomes.events[state.eventIndex] : undefined;
-  const showMiniRail = state.kind === 'event' && state.phase === 'results';
   const showBoardInterstitial =
     state.kind === 'event' && state.phase === 'elimination' && state.phaseElapsedMs / state.phaseDurationMs >= 0.5;
   const justLocked = event?.picksLocked.length ? event.picksLocked[event.picksLocked.length - 1].pick : undefined;
+
+  // Persistent jumbotron scoreboard — pure function of (outcomes, elapsed),
+  // so it reads identically for every viewer. Docked (desktop) + ticker
+  // (mobile) ride alongside the action during intro/turn; during results,
+  // its expanded form is handed to EventFrame in place of the inline
+  // leaderboard (FinaleScene ignores it and keeps its own champion banner).
+  const sb = scoreboardAt(outcomes, elapsed);
+  const showDockedTicker = sb !== null && state.kind === 'event' && (state.phase === 'intro' || state.phase === 'turn');
+  const scoreboardNode: ReactNode | undefined =
+    sb !== null && state.kind === 'event' && state.phase === 'results'
+      ? <Scoreboard data={sb} names={room.names} colors={room.colors} mode="expanded" />
+      : undefined;
 
   return (
     <div className="relative min-h-dvh w-full overflow-x-hidden">
@@ -140,6 +157,7 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
             phaseDurationMs={state.phaseDurationMs}
             turnIndex={state.turnIndex}
             athlete={state.athlete}
+            scoreboard={scoreboardNode}
           />
         )}
 
@@ -155,12 +173,11 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
         )}
       </Field>
 
-      {showMiniRail && (
-        <div className="pointer-events-none fixed inset-x-0 top-14 z-10 px-3 sm:top-16">
-          <div className="pointer-events-auto mx-auto max-w-3xl overflow-x-auto rounded-md border border-[var(--line)] bg-[var(--bg)]/85 px-2 py-1.5 backdrop-blur-sm">
-            <DraftBoard names={room.names} colors={room.colors} locks={locks} total={room.names.length} compact />
-          </div>
-        </div>
+      {showDockedTicker && sb && (
+        <>
+          <Scoreboard data={sb} names={room.names} colors={room.colors} mode="docked" />
+          <Scoreboard data={sb} names={room.names} colors={room.colors} mode="ticker" />
+        </>
       )}
 
       {showBoardInterstitial && event && (

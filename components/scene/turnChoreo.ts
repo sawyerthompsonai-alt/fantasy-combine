@@ -7,11 +7,11 @@ export const easeOut = (t: number): number => 1 - Math.pow(1 - t, 2.2);
 
 export const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
-/** Fraction of a turn's progress at which the final stat locks in and the
- * lower-third stops "counting" and shows the true result, bold. Shared by
- * every scene so the broadcast rhythm (running number -> hard lock) reads
- * consistently across event types. */
-export const STAT_REVEAL_FRACTION = 0.7;
+/** Lives in lib/timeline.ts (lib/scoreboard.ts needs it and lib/ must not
+ * import from components/) — re-exported here so every existing per-event
+ * scene import keeps working unchanged. */
+import { STAT_REVEAL_FRACTION } from '@/lib/timeline';
+export { STAT_REVEAL_FRACTION };
 
 export function poseFor(type: EventType): AthletePose {
   switch (type) {

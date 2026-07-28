@@ -27,6 +27,11 @@ export interface EventFrameProps {
   /** Only invoked while phase === 'turn' — the per-event scene supplies the
    * actual choreography (path, prop, pose) for that one spotlighted rep. */
   renderTurn: (ctx: TurnRenderCtx) => ReactNode;
+  /** Results-phase leaderboard, e.g. `<Scoreboard mode="expanded" .../>`.
+   * When supplied, replaces this component's own inline ranking list
+   * (which still renders when the prop is absent, for backward
+   * compatibility with any caller that doesn't pass one). */
+  scoreboard?: ReactNode;
 }
 
 /**
@@ -38,7 +43,7 @@ export interface EventFrameProps {
  * lineup/leaderboard/cut chrome four times over.
  */
 export default function EventFrame({
-  event, names, colors, phase, phaseElapsedMs, phaseDurationMs, turnIndex, athlete, introMessage, renderTurn,
+  event, names, colors, phase, phaseElapsedMs, phaseDurationMs, turnIndex, athlete, introMessage, renderTurn, scoreboard,
 }: EventFrameProps) {
   const meta = EVENT_META[event.type];
   const lanes = laneOrder(event.competitors);
@@ -72,27 +77,29 @@ export default function EventFrame({
     return (
       <>
         <div className="flex-1 overflow-y-auto px-3 pb-32 pt-6 sm:px-6">
-          <ol className="mx-auto flex max-w-xl flex-col gap-1.5">
-            {event.ranking.map((a, i) => {
-              const eliminated = event.eliminated.includes(a);
-              return (
-                <li
-                  key={a}
-                  className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
-                    eliminated ? 'border-red-500/40 bg-red-950/20' : 'border-[var(--line)] bg-[var(--panel)]/90'
-                  }`}
-                >
-                  <span className="stat w-6 text-right text-[var(--muted)]">{i + 1}</span>
-                  <Athlete name={names[a]} color={colors[a]} pose="idle" size={40} showName={false} dimmed={eliminated} />
-                  <span className="flex-1 truncate text-sm font-semibold sm:text-base">{names[a]}</span>
-                  <span className="stat text-sm sm:text-base">
-                    {event.performances[a].toFixed(meta.decimals)}{meta.unit}
-                  </span>
-                  {eliminated && <span className="display text-[10px] text-red-400">CUT</span>}
-                </li>
-              );
-            })}
-          </ol>
+          {scoreboard ?? (
+            <ol className="mx-auto flex max-w-xl flex-col gap-1.5">
+              {event.ranking.map((a, i) => {
+                const eliminated = event.eliminated.includes(a);
+                return (
+                  <li
+                    key={a}
+                    className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
+                      eliminated ? 'border-red-500/40 bg-red-950/20' : 'border-[var(--line)] bg-[var(--panel)]/90'
+                    }`}
+                  >
+                    <span className="stat w-6 text-right text-[var(--muted)]">{i + 1}</span>
+                    <Athlete name={names[a]} color={colors[a]} pose="idle" size={40} showName={false} dimmed={eliminated} />
+                    <span className="flex-1 truncate text-sm font-semibold sm:text-base">{names[a]}</span>
+                    <span className="stat text-sm sm:text-base">
+                      {event.performances[a].toFixed(meta.decimals)}{meta.unit}
+                    </span>
+                    {eliminated && <span className="display text-[10px] text-red-400">CUT</span>}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </div>
         <LowerThird visible label={`${meta.label} · RESULTS`} round={event.round} />
       </>
