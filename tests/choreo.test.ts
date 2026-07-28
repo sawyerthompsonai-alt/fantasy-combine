@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DASH_BEATS, SPRINT_START_FRAC, cameraX, STAT_REVEAL_FRACTION,
   smoothstep, cumulativeDist, easedPathPosition, nearestPlant, routeU,
-  benchLockouts,
+  benchLockouts, staggeredSpin, doublePumpScaleY, dampedKeyframes,
   type Point,
 } from '@/components/scene/turnChoreo';
 
@@ -227,5 +227,84 @@ describe('benchLockouts', () => {
       expect(last).toBeGreaterThan(secondLast);
       expect(secondLast).toBeGreaterThan(first);
     }
+  });
+});
+
+describe('staggeredSpin', () => {
+  it('holds at u=0/eased=0 before an item\'s own window starts', () => {
+    expect(staggeredSpin(0.1, 3, 0.46, 0.0075, 0.05)).toEqual({ u: 0, eased: 0 });
+  });
+
+  it('reaches u=1/eased=1 once an item\'s own window is complete, and holds there', () => {
+    const early = staggeredSpin(0.46 + 0 * 0.0075 + 0.05, 0, 0.46, 0.0075, 0.05);
+    expect(early.u).toBeCloseTo(1);
+    expect(early.eased).toBeCloseTo(1);
+    const later = staggeredSpin(0.9, 0, 0.46, 0.0075, 0.05);
+    expect(later.u).toBe(1);
+    expect(later.eased).toBe(1);
+  });
+
+  it('staggers later indices to start later — same progress, higher index means earlier in its own window', () => {
+    const progress = 0.46 + 0.0075 * 1 + 0.01; // just past item 1's start, well before item 3's
+    const item1 = staggeredSpin(progress, 1, 0.46, 0.0075, 0.05);
+    const item3 = staggeredSpin(progress, 3, 0.46, 0.0075, 0.05);
+    expect(item1.u).toBeGreaterThan(item3.u);
+  });
+
+  it('is monotonically increasing in progress for a fixed item', () => {
+    const a = staggeredSpin(0.5, 2, 0.46, 0.0075, 0.05);
+    const b = staggeredSpin(0.52, 2, 0.46, 0.0075, 0.05);
+    expect(b.u).toBeGreaterThanOrEqual(a.u);
+  });
+});
+
+describe('doublePumpScaleY', () => {
+  it('starts at 1 (neutral, no dip yet)', () => {
+    expect(doublePumpScaleY(0, 0.12, 0.14)).toBeCloseTo(1);
+  });
+
+  it('bottoms out the first dip at the quarter mark', () => {
+    expect(doublePumpScaleY(0.25, 0.12, 0.14)).toBeCloseTo(1 - 0.12);
+  });
+
+  it('recovers to neutral at the half mark, between the two pumps', () => {
+    expect(doublePumpScaleY(0.5, 0.12, 0.14)).toBeCloseTo(1);
+  });
+
+  it('ends at the second, deeper dip at u=1 — the launch crouch, no recoil back to neutral', () => {
+    expect(doublePumpScaleY(1, 0.12, 0.14)).toBeCloseTo(1 - 0.14);
+  });
+
+  it('clamps outside [0, 1]', () => {
+    expect(doublePumpScaleY(-1, 0.12, 0.14)).toBeCloseTo(1);
+    expect(doublePumpScaleY(2, 0.12, 0.14)).toBeCloseTo(1 - 0.14);
+  });
+});
+
+describe('dampedKeyframes', () => {
+  const points: Array<[number, number]> = [[0, 6], [1 / 3, -4], [2 / 3, 2], [1, 0]];
+
+  it('returns 0 for an empty keyframe list', () => {
+    expect(dampedKeyframes(0.5, [])).toBe(0);
+  });
+
+  it('hits each authored keyframe value exactly at its u', () => {
+    for (const [u, v] of points) {
+      expect(dampedKeyframes(u, points)).toBeCloseTo(v);
+    }
+  });
+
+  it('interpolates smoothly (monotonically toward the next keyframe) mid-segment', () => {
+    // Between u=0 (6) and u=1/3 (-4), values should be strictly decreasing.
+    const a = dampedKeyframes(0.05, points);
+    const b = dampedKeyframes(0.15, points);
+    const c = dampedKeyframes(0.3, points);
+    expect(a).toBeGreaterThan(b);
+    expect(b).toBeGreaterThan(c);
+  });
+
+  it('clamps outside [0, 1] to the nearest endpoint value', () => {
+    expect(dampedKeyframes(-0.5, points)).toBeCloseTo(6);
+    expect(dampedKeyframes(1.5, points)).toBeCloseTo(0);
   });
 });

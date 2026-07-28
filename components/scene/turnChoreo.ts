@@ -294,3 +294,59 @@ export function benchLockouts(reps: number): number[] {
     return sum / total;
   });
 }
+
+// --- Jump events (vertical vertec, broad jump) -----------------------------
+
+/** State for one of N items that peel away in sequence, each starting
+ * `staggerFrac` of turn progress after the previous item and taking
+ * `spinFrac` of progress to complete its own motion — the vertec flags
+ * swatted away below the reached height (Task 11), but generic over any
+ * staggered "knock away"/reveal driven by an item's index rather than a CSS
+ * animation-delay (so it stays correct for a viewer who joins mid-turn).
+ * `u` is the item's own local progress (0 before its turn starts, 1 once its
+ * motion is complete and holds there); `eased` is `easeOut(u)`. Pure
+ * function of (progress, index, startProgress, staggerFrac, spinFrac). */
+export function staggeredSpin(
+  progress: number, index: number, startProgress: number, staggerFrac: number, spinFrac: number,
+): { u: number; eased: number } {
+  const itemStart = startProgress + index * staggerFrac;
+  const u = clamp01((progress - itemStart) / Math.max(spinFrac, 1e-6));
+  return { u, eased: easeOut(u) };
+}
+
+/** Two-pump "load" rhythm as a scaleY multiplier over u∈[0,1]: dips to
+ * `1 - dip1` at the quarter mark, back to 1 at the half mark, then dips to
+ * `1 - dip2` and *stays* there at u=1 rather than recoiling back — the
+ * second, deeper dip becomes the crouch an explosive movement launches from
+ * (the broad jump's double arm pump into a leap, a vertical's final load
+ * into its explode). Pure function of (u, dip1, dip2); no timers, no
+ * randomness. */
+export function doublePumpScaleY(u: number, dip1: number, dip2: number): number {
+  const c = clamp01(u);
+  if (c < 0.5) {
+    const local = c / 0.5;
+    return 1 - dip1 * Math.sin(Math.PI * local);
+  }
+  const local = (c - 0.5) / 0.5;
+  return 1 - dip2 * Math.sin((Math.PI / 2) * local);
+}
+
+/** Piecewise, smoothstep-eased interpolation through a list of hand-authored
+ * `[u, value]` keyframes — used for the broad jump's stick-the-landing
+ * wobble (rotation +6deg -> -4deg -> +2deg -> 0deg, a damped oscillation)
+ * but generic over any authored damped curve. `points` must be sorted by u
+ * ascending; values outside the first/last u hold at the nearest endpoint's
+ * value. Pure function of (u, points) — no timers, no randomness. */
+export function dampedKeyframes(u: number, points: Array<[number, number]>): number {
+  if (points.length === 0) return 0;
+  const c = clamp01(u);
+  for (let i = 0; i < points.length - 1; i++) {
+    const [u0, v0] = points[i];
+    const [u1, v1] = points[i + 1];
+    if (c <= u1 || i === points.length - 2) {
+      const local = u1 === u0 ? 0 : clamp01((c - u0) / (u1 - u0));
+      return v0 + (v1 - v0) * smoothstep(local);
+    }
+  }
+  return points[points.length - 1][1];
+}
