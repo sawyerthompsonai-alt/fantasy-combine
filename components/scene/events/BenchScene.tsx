@@ -107,12 +107,19 @@ export default function BenchScene(props: {
         const opacity = edgeFade(progress);
 
         // Rep counter — ticks exactly on lockout, driven only by progress.
-        const uForCount = clamp01((progress - WALK_IN_FRAC) / (STAT_REVEAL_FRACTION - WALK_IN_FRAC));
+        // `rawU` is intentionally left unclamped above 1 (progress can run
+        // past STAT_REVEAL_FRACTION while the bar racks out / athlete sits
+        // up) so the *final* rep's pulse — whose lockout lands exactly at
+        // u===1, the same instant `locked` flips true — still gets its full
+        // 0.08-wide decay window instead of being cut off in the frame it
+        // should start.
+        const rawU = (progress - WALK_IN_FRAC) / (STAT_REVEAL_FRACTION - WALK_IN_FRAC);
+        const uForCount = clamp01(rawU);
         const passedTicks = lockouts.filter(f => f <= uForCount);
         const repCount = passedTicks.length;
         const lastTickU = passedTicks.length ? passedTicks[passedTicks.length - 1] : 0;
-        const sinceTick = clamp01((uForCount - lastTickU) / 0.08);
-        const pulseScale = passedTicks.length === 0 || locked ? 1 : 1 + 0.15 * (1 - easeOut(sinceTick));
+        const sinceTick = clamp01((rawU - lastTickU) / 0.08);
+        const pulseScale = passedTicks.length === 0 ? 1 : 1 + 0.15 * (1 - easeOut(sinceTick));
 
         // Bar position, flex, and struggle shake.
         let barX: number; let barY: number; let flexDeg = 0; let shakeX = 0; let struggling = false;
@@ -165,64 +172,95 @@ export default function BenchScene(props: {
 
         return (
           <>
-            <div className="relative flex-1 px-4 pb-28 pt-6" style={{ opacity }}>
+            <div className="relative min-h-0 flex-1 px-4 pb-28 pt-6" style={{ opacity }}>
               <p className="display absolute left-4 top-4 text-[10px] text-[var(--muted)] sm:text-xs">
                 LANE {turnIndex + 1} / {lanes.length}
               </p>
 
-              <div className="flex h-full items-center justify-center">
-                <div className="relative" style={{ width: BOX_W, height: BOX_H }}>
-                  {/* rubber floor is WeightRoom's job — this box only holds furniture */}
-
-                  {/* bench rack posts (head end) */}
+              {/* Local BOX_W x BOX_H coordinate system, same as before, but
+                  rendered through an SVG viewBox instead of a fixed-px div.
+                  The svg keeps its intrinsic 300x172 size (CSS width/height
+                  left `auto`, same as an <img>) capped by max-width/
+                  max-height: 100% — so at desktop, where the stage is much
+                  bigger than 300x172, nothing scales up and the appearance
+                  is pixel-identical to the old fixed box; only when the
+                  available stage is shorter than BOX_H or narrower than
+                  BOX_W (short/landscape viewports, resized desktop windows)
+                  does it shrink, proportionally, via the same intrinsic-
+                  aspect-ratio algorithm browsers use for replaced elements
+                  like <img>. `min-h-0` on this flex-1 container (and
+                  min-w-0 below) opt out of flexbox's default "never shrink
+                  below content's intrinsic size" behavior, which would
+                  otherwise force this box to grow past the available stage
+                  to fit the svg's un-shrunk 300x172 instead of the other
+                  way around. None of the geometry math below changes. */}
+              <div className="flex h-full min-w-0 items-center justify-center">
+                <svg
+                  width={BOX_W}
+                  height={BOX_H}
+                  viewBox={`0 0 ${BOX_W} ${BOX_H}`}
+                  preserveAspectRatio="xMidYMid meet"
+                  style={{ maxWidth: '100%', maxHeight: '100%' }}
+                >
+                <foreignObject x={0} y={0} width={BOX_W} height={BOX_H}>
                   <div
-                    className="absolute rounded-sm bg-[#2b2f38]"
-                    style={{ left: RACK_X1, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
-                  />
-                  <div
-                    className="absolute rounded-sm bg-[#2b2f38]"
-                    style={{ left: RACK_X2, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
-                  />
-                  <div
-                    className="absolute rounded-sm bg-[#3a3f4a]"
-                    style={{ left: RACK_X1 - 2, top: RACK_TOP_Y + 4, width: 20, height: 5 }}
-                  />
-
-                  {/* spotter, standing behind the bench head */}
-                  <div className="absolute -translate-x-1/2" style={{ left: spotterX, bottom: BOX_H - FLOOR_Y }}>
-                    <Athlete name="Spotter" color="#5a6170" pose="idle" size={64} dimmed showName={false} />
-                  </div>
-
-                  {/* bench pad + legs */}
-                  <div
-                    className="absolute rounded-md bg-[#23262d] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-                    style={{ left: HEAD_X, top: BENCH_TOP_Y, width: FOOT_X - HEAD_X, height: BENCH_THICK }}
-                  />
-                  <div className="absolute bg-[#15171c]" style={{ left: HEAD_X + 8, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
-                  <div className="absolute bg-[#15171c]" style={{ left: FOOT_X - 14, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
-
-                  {/* athlete: rotates from standing (walk-in) to lying flat on the bench */}
-                  <div
-                    className="absolute"
-                    style={{ left: centerX, top: centerY, transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)` }}
+                    // React automatically renders foreignObject's children in
+                    // the HTML namespace (no xmlns attribute needed here).
+                    style={{ position: 'relative', width: BOX_W, height: BOX_H }}
                   >
-                    <Athlete name={names[a]} color={colors[a]} pose={pose} size={ATH_SIZE} facing={facing} showName={false} spotlight />
-                  </div>
+                    {/* rubber floor is WeightRoom's job — this box only holds furniture */}
 
-                  {/* barbell: bar + two 45-plate pairs */}
-                  <svg
-                    className="absolute overflow-visible"
-                    style={{
-                      left: barX, top: barY, width: 160, height: 40,
-                      transform: `translate(-50%, -50%) rotate(${flexDeg}deg) translateX(${shakeX}px)`,
-                    }}
-                    viewBox="0 0 160 40"
-                  >
-                    <line x1="14" y1="20" x2="146" y2="20" stroke="#8a93a3" strokeWidth="4" strokeLinecap="round" />
-                    <BenchPlate cx={14} />
-                    <BenchPlate cx={146} />
-                  </svg>
-                </div>
+                    {/* bench rack posts (head end) */}
+                    <div
+                      className="absolute rounded-sm bg-[#2b2f38]"
+                      style={{ left: RACK_X1, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
+                    />
+                    <div
+                      className="absolute rounded-sm bg-[#2b2f38]"
+                      style={{ left: RACK_X2, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
+                    />
+                    <div
+                      className="absolute rounded-sm bg-[#3a3f4a]"
+                      style={{ left: RACK_X1 - 2, top: RACK_TOP_Y + 4, width: 20, height: 5 }}
+                    />
+
+                    {/* spotter, standing behind the bench head */}
+                    <div className="absolute -translate-x-1/2" style={{ left: spotterX, bottom: BOX_H - FLOOR_Y }}>
+                      <Athlete name="Spotter" color="#5a6170" pose="idle" size={64} dimmed showName={false} />
+                    </div>
+
+                    {/* bench pad + legs */}
+                    <div
+                      className="absolute rounded-md bg-[#23262d] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+                      style={{ left: HEAD_X, top: BENCH_TOP_Y, width: FOOT_X - HEAD_X, height: BENCH_THICK }}
+                    />
+                    <div className="absolute bg-[#15171c]" style={{ left: HEAD_X + 8, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
+                    <div className="absolute bg-[#15171c]" style={{ left: FOOT_X - 14, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
+
+                    {/* athlete: rotates from standing (walk-in) to lying flat on the bench */}
+                    <div
+                      className="absolute"
+                      style={{ left: centerX, top: centerY, transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)` }}
+                    >
+                      <Athlete name={names[a]} color={colors[a]} pose={pose} size={ATH_SIZE} facing={facing} showName={false} spotlight />
+                    </div>
+
+                    {/* barbell: bar + two 45-plate pairs */}
+                    <svg
+                      className="absolute overflow-visible"
+                      style={{
+                        left: barX, top: barY, width: 160, height: 40,
+                        transform: `translate(-50%, -50%) rotate(${flexDeg}deg) translateX(${shakeX}px)`,
+                      }}
+                      viewBox="0 0 160 40"
+                    >
+                      <line x1="14" y1="20" x2="146" y2="20" stroke="#8a93a3" strokeWidth="4" strokeLinecap="round" />
+                      <BenchPlate cx={14} />
+                      <BenchPlate cx={146} />
+                    </svg>
+                  </div>
+                </foreignObject>
+                </svg>
               </div>
 
               <p
