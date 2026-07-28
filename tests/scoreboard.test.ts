@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { deriveOutcomes } from '@/lib/outcomes';
 import { buildTimeline, ELIMINATION_LOCK_OFFSET_MS, STAT_REVEAL_FRACTION } from '@/lib/timeline';
 import { EVENT_META } from '@/lib/types';
-import { scoreboardAt } from '@/lib/scoreboard';
+import { scoreboardAt, leaderAt, leaderChangedRecently } from '@/lib/scoreboard';
 
 const names12 = Array.from({ length: 12 }, (_, i) => `T${i}`);
 const outcomes = deriveOutcomes('sb-seed', names12);
@@ -142,5 +142,65 @@ describe('scoreboardAt', () => {
     expect(before.entries.every(e => e.mark === null)).toBe(true);
     const after = scoreboardAt(outcomes, run.startMs + Math.ceil(dur * STAT_REVEAL_FRACTION) + 50)!;
     expect(after.entries.every(e => e.mark !== null)).toBe(true);
+  });
+});
+
+describe('leaderAt', () => {
+  it('is undefined before the show starts and throughout the cold open', () => {
+    expect(leaderAt(outcomes, -50)).toBeUndefined();
+    const firstIntro = segments.find(s => s.eventIndex === 0 && s.phase === 'intro')!;
+    expect(leaderAt(outcomes, firstIntro.startMs + 10)).toBeUndefined();
+  });
+
+  it('equals the sole scorer right after the first turn of an event posts', () => {
+    const turn0 = segments.find(s => s.eventIndex === 0 && s.phase === 'turn' && s.turnIndex === 0)!;
+    expect(leaderAt(outcomes, turn0.endMs)).toBe(turn0.athlete);
+  });
+
+  it('matches scoreboardAt(...).board[0]?.athlete at an arbitrary mid-results instant', () => {
+    const results1 = segments.find(s => s.eventIndex === 1 && s.phase === 'results')!;
+    const sb = scoreboardAt(outcomes, results1.startMs + 10)!;
+    expect(leaderAt(outcomes, results1.startMs + 10)).toBe(sb.board[0]?.athlete);
+  });
+});
+
+describe('leaderChangedRecently', () => {
+  it('is false around the very first mark of an event — no prior leader to change from', () => {
+    const turn0 = segments.find(s => s.eventIndex === 0 && s.phase === 'turn' && s.turnIndex === 0)!;
+    expect(leaderChangedRecently(outcomes, turn0.endMs)).toBe(false);
+  });
+
+  it('is false at the very start of the show (both sides undefined)', () => {
+    expect(leaderChangedRecently(outcomes, 0)).toBe(false);
+  });
+
+  it('finds a real mid-event leader change and confirms it flags exactly the window after it', () => {
+    // Search every event's turn-reveal instants for a spot where the board
+    // leader actually flips identity, rather than hardcoding a seed/event/
+    // turn combo — stays correct if the seed or lineup ever changes, but
+    // fails loudly (not skip) if none exists so the assertions below always
+    // run for real.
+    let found: { revealMs: number; prevLeader: number; newLeader: number } | undefined;
+    for (let idx = 0; idx < outcomes.events.length && !found; idx++) {
+      if (outcomes.events[idx].type === 'champ40') continue;
+      const turns = segments
+        .filter(s => s.eventIndex === idx && s.phase === 'turn')
+        .sort((a, b) => (a.turnIndex ?? 0) - (b.turnIndex ?? 0));
+      for (const turn of turns) {
+        const dur = turn.endMs - turn.startMs;
+        const revealMs = turn.startMs + Math.ceil(dur * STAT_REVEAL_FRACTION);
+        const prevLeader = leaderAt(outcomes, revealMs - 600);
+        const newLeader = leaderAt(outcomes, revealMs);
+        if (prevLeader !== undefined && newLeader !== undefined && prevLeader !== newLeader) {
+          found = { revealMs, prevLeader, newLeader };
+          break;
+        }
+      }
+    }
+    expect(found).toBeDefined();
+    const { revealMs, prevLeader, newLeader } = found!;
+    expect(newLeader).not.toBe(prevLeader);
+    expect(leaderChangedRecently(outcomes, revealMs)).toBe(true);
+    expect(leaderChangedRecently(outcomes, revealMs + 700)).toBe(false); // 600ms window has elapsed
   });
 });

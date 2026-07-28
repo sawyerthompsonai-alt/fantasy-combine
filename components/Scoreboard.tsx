@@ -14,6 +14,11 @@ interface ScoreboardProps {
   names: string[];
   colors: string[];
   mode: 'docked' | 'expanded' | 'ticker';
+  /** Task 14 engagement punch: flashes an accent "NEW LEADER" chip across
+   * the docked header the moment the board's leader changes mid-event.
+   * Only `mode="docked"` renders it — the ticker/expanded views don't have
+   * (or need) a persistent header to punch. */
+  leaderChangedRecently?: boolean;
 }
 
 /** Persistent stadium-jumbotron scoreboard — a pure view over ScoreboardData
@@ -23,23 +28,32 @@ interface ScoreboardProps {
  * below the header), a slim tap-to-expand ticker for mobile, and a
  * full-board "expanded" view used in place of EventFrame's inline
  * leaderboard during the results phase. */
-export default function Scoreboard({ data, names, colors, mode }: ScoreboardProps) {
-  if (mode === 'docked') return <DockedBoard data={data} names={names} colors={colors} />;
+export default function Scoreboard({ data, names, colors, mode, leaderChangedRecently }: ScoreboardProps) {
+  if (mode === 'docked') return <DockedBoard data={data} names={names} colors={colors} leaderChangedRecently={leaderChangedRecently} />;
   if (mode === 'ticker') return <TickerBoard data={data} names={names} colors={colors} />;
   return <ExpandedBoard data={data} names={names} colors={colors} />;
 }
 
-function DockedBoard({ data, names, colors }: Omit<ScoreboardProps, 'mode'>) {
+function DockedBoard({ data, names, colors, leaderChangedRecently }: Omit<ScoreboardProps, 'mode'>) {
   const leader = data.board[0]?.athlete;
   const rows = data.board.slice(0, DOCKED_ROWS);
 
   return (
     <div className="fixed right-3 top-16 z-30 hidden w-[190px] flex-col overflow-hidden rounded-md border border-[var(--accent)]/50 bg-[var(--panel)]/95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-sm sm:flex">
-      <div className="flex items-center justify-between gap-1.5 border-b border-[var(--line)] px-2.5 py-1.5">
+      <div className="relative flex items-center justify-between gap-1.5 overflow-hidden border-b border-[var(--line)] px-2.5 py-1.5">
         <span className="display truncate text-[10px] text-[var(--accent)]">{data.label}</span>
         {data.round !== undefined && data.round > 1 && (
           <span className="display shrink-0 rounded border border-[var(--line)] px-1 py-0.5 text-[8px] text-[var(--muted)]">
             RD {data.round}
+          </span>
+        )}
+        {leaderChangedRecently && leader !== undefined && (
+          <span
+            key={leader}
+            aria-hidden
+            className="new-leader-chip display pointer-events-none absolute inset-y-0 right-0 flex items-center rounded-l-sm bg-[var(--accent)] px-2 text-[9px] font-extrabold tracking-wider text-[var(--bg)]"
+          >
+            NEW LEADER
           </span>
         )}
       </div>

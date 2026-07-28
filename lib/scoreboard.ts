@@ -73,3 +73,28 @@ export function scoreboardAt(outcomes: Outcomes, elapsedMs: number): ScoreboardD
     totalPicks: outcomes.order.length,
   };
 }
+
+/** The current event's leading athlete, or `undefined` while there's no
+ * live board yet (cold open, pregame, after the finale) or no mark has
+ * posted this event yet. Thin convenience wrapper over `scoreboardAt` —
+ * used both for the docked scoreboard's edge-triggered "NEW LEADER" sound
+ * cue and (via `leaderChangedRecently` below) its purely elapsed-derived
+ * visual flash. */
+export function leaderAt(outcomes: Outcomes, elapsedMs: number): number | undefined {
+  return scoreboardAt(outcomes, elapsedMs)?.board[0]?.athlete;
+}
+
+/** True exactly while the current event's leader differs from the leader
+ * `windowMs` ago, *and* both instants actually have a leader — excluding
+ * the "no leader -> first leader" transition (a turn's first mark posting,
+ * or crossing into a fresh event's still-empty board), which is a leader
+ * *appearing*, not *changing*. Pure function of (outcomes, elapsedMs) with
+ * no stored state: a viewer who joins mid-window still derives the same
+ * true/false a continuous viewer would at that instant, so the "NEW
+ * LEADER" flash it drives reads correctly for late joiners and replays
+ * alike. */
+export function leaderChangedRecently(outcomes: Outcomes, elapsedMs: number, windowMs = 600): boolean {
+  const now = leaderAt(outcomes, elapsedMs);
+  const before = leaderAt(outcomes, elapsedMs - windowMs);
+  return now !== undefined && before !== undefined && now !== before;
+}

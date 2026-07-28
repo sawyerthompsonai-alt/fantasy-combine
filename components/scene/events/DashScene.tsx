@@ -11,6 +11,7 @@ import {
 } from '../turnChoreo';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
+import type { AthleteBio } from '@/lib/jokes';
 
 function Cone({ x, y }: Point) {
   return (
@@ -232,6 +233,7 @@ function OfficialStamp({
 export default function DashScene(props: {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
+  bios?: AthleteBio[]; roast?: (athlete: number) => string;
 }) {
   const { event, names, colors, phaseDurationMs } = props;
   const meta = EVENT_META[event.type];
@@ -242,7 +244,7 @@ export default function DashScene(props: {
       <EventFrame
         {...props}
         introMessage={`${laneOrder(event.competitors).length} athletes step up to the line`}
-        renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+        renderTurn={({ athlete: a, turnIndex, lanes, progress, subline }) => {
           const finalValue = event.performances[a];
           const displayValue = countUpStat(progress, finalValue);
           const locked = progress >= DASH_BEATS.official;
@@ -311,6 +313,7 @@ export default function DashScene(props: {
                 round={event.round}
                 athleteName={names[a]}
                 athleteColor={colors[a]}
+                subline={subline}
                 statLabel={locked ? undefined : 'CLOCK'}
                 statValue={`${displayValue.toFixed(meta.decimals)}${meta.unit}`}
               />
@@ -327,7 +330,7 @@ export default function DashScene(props: {
       <EventFrame
         {...props}
         introMessage={`${laneOrder(event.competitors).length} athletes eye the cones`}
-        renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+        renderTurn={({ athlete: a, turnIndex, lanes, progress, subline }) => {
           const finalValue = event.performances[a];
           const displayValue = countUpStat(progress, finalValue);
           const locked = progress >= DASH_BEATS.official;
@@ -416,6 +419,7 @@ export default function DashScene(props: {
                 round={event.round}
                 athleteName={names[a]}
                 athleteColor={colors[a]}
+                subline={subline}
                 statLabel={locked ? undefined : 'CLOCK'}
                 statValue={`${displayValue.toFixed(meta.decimals)}${meta.unit}`}
               />
@@ -431,7 +435,7 @@ export default function DashScene(props: {
     <EventFrame
       {...props}
       introMessage={`${laneOrder(event.competitors).length} athletes set for the shuttle`}
-      renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+      renderTurn={({ athlete: a, turnIndex, lanes, progress, subline }) => {
         const finalValue = event.performances[a];
         const displayValue = countUpStat(progress, finalValue);
         const locked = progress >= DASH_BEATS.official;
@@ -540,6 +544,7 @@ export default function DashScene(props: {
               round={event.round}
               athleteName={names[a]}
               athleteColor={colors[a]}
+              subline={subline}
               statLabel={locked ? undefined : 'CLOCK'}
               statValue={`${displayValue.toFixed(meta.decimals)}${meta.unit}`}
             />

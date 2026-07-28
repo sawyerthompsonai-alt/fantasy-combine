@@ -5,6 +5,12 @@ export interface LowerThirdProps {
   round?: number;
   athleteName?: string;
   athleteColor?: string;
+  /** Small muted secondary segment rendered inline after `athleteName`
+   * (e.g. the walk-up "nickname · measurable" line) — stays on the bar's
+   * single line, truncating alongside the name rather than adding a
+   * second row, so the bar's height never changes (see Task 11-13's
+   * single-line/overlap fixes this bar exists to preserve). */
+  subline?: string;
   statLabel?: string;
   statValue?: string;
   /** Overrides the name/stat row with a single broadcast message, e.g.
@@ -19,6 +25,7 @@ export default function LowerThird({
   round,
   athleteName,
   athleteColor,
+  subline,
   statLabel,
   statValue,
   message,
@@ -56,7 +63,12 @@ export default function LowerThird({
                   {athleteColor && (
                     <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: athleteColor }} />
                   )}
-                  <span className="truncate">{athleteName}</span>
+                  <span className="min-w-0 shrink truncate">{athleteName}</span>
+                  {subline && (
+                    <span className="min-w-0 shrink truncate text-[10px] font-normal italic text-[var(--muted)] sm:text-[11px]">
+                      {subline}
+                    </span>
+                  )}
                 </span>
               )}
               {statValue && (

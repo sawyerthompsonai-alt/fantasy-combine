@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { PublicRoom } from '@/lib/rooms';
 import { lockedPicks, stateAt, type BroadcastState, type EventPhase } from '@/lib/timeline';
-import { scoreboardAt } from '@/lib/scoreboard';
+import { scoreboardAt, leaderAt, leaderChangedRecently } from '@/lib/scoreboard';
 import type { EventResult } from '@/lib/types';
-import { athleteBios } from '@/lib/jokes';
+import { athleteBios, farewellLine, type AthleteBio } from '@/lib/jokes';
 import { sound } from '@/lib/sound';
 import { useAnimationNow } from '@/lib/useAnimationNow';
 import { STAT_REVEAL_FRACTION, SPRINT_START_FRAC, FINALE_GUN_FRACTION } from './scene/turnChoreo';
@@ -28,6 +28,8 @@ interface EventSceneProps {
    * EventFrameProps.scoreboard) — FinaleScene (champ40) ignores it, since
    * the finale keeps its own champion-banner results screen. */
   scoreboard?: ReactNode;
+  bios?: AthleteBio[];
+  roast?: (athlete: number) => string;
 }
 
 /** Routes each event to its per-event choreography by type: straight/weave/
@@ -84,10 +86,16 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   // and for Task 14's farewell lines later. Memoized so identity is stable
   // across renders (bios is passed down as a prop).
   const bios = useMemo(() => athleteBios(room.seedHash, room.names.length), [room.seedHash, room.names.length]);
+  // Same seed source as `bios` above — elimination farewell lines are just
+  // as safe to derive pre-completion as the cold-open bios are.
+  const roast = (a: number) => farewellLine(room.seedHash, a, room.names[a]);
 
   const event = state.kind === 'event' ? outcomes.events[state.eventIndex] : undefined;
 
-  const prevRef = useRef({ turnKey: '', poppedKey: '', whistledKey: '', locks: 0, finalFired: false });
+  const prevRef = useRef({
+    turnKey: '', poppedKey: '', whistledKey: '', locks: 0, finalFired: false,
+    leaderAthlete: undefined as number | undefined,
+  });
   useEffect(() => {
     const prev = prevRef.current;
     const turnKey =
@@ -157,14 +165,29 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
       prev.finalFired = true;
     }
 
+    // NEW LEADER punch: a pop the instant the current event's leader
+    // identity actually changes — edge-triggered on the stored previous
+    // leader, same prevRef pattern as every other cue above (this whole
+    // effect runs every animation frame). Guarded the same way as the
+    // visual chip's `leaderChangedRecently` (see lib/scoreboard.ts): a
+    // leader merely *appearing* (prev undefined -> some athlete, e.g. a
+    // turn's first mark posting) never fires, only a genuine change of
+    // who's on top.
+    const currentLeader = leaderAt(outcomes, elapsed);
+    if (currentLeader !== undefined && prev.leaderAthlete !== undefined && currentLeader !== prev.leaderAthlete) {
+      sound.pop();
+    }
+
     prevRef.current = {
       turnKey, poppedKey: prev.poppedKey, whistledKey: prev.whistledKey, locks: locks.length, finalFired: prev.finalFired,
+      leaderAthlete: currentLeader,
     };
   });
 
   const showBoardInterstitial =
     state.kind === 'event' && state.phase === 'elimination' && state.phaseElapsedMs / state.phaseDurationMs >= 0.5;
-  const justLocked = event?.picksLocked.length ? event.picksLocked[event.picksLocked.length - 1].pick : undefined;
+  const justLockedEntry = event?.picksLocked.length ? event.picksLocked[event.picksLocked.length - 1] : undefined;
+  const justLocked = justLockedEntry?.pick;
 
   // Persistent jumbotron scoreboard — pure function of (outcomes, elapsed),
   // so it reads identically for every viewer. Docked (desktop) + ticker
@@ -173,6 +196,13 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   // leaderboard (FinaleScene ignores it and keeps its own champion banner).
   const sb = scoreboardAt(outcomes, elapsed);
   const showDockedTicker = sb !== null && state.kind === 'event' && (state.phase === 'intro' || state.phase === 'turn');
+  // Engagement punch: a purely elapsed-derived flag (no stored state — see
+  // lib/scoreboard.ts's leaderChangedRecently) driving the docked
+  // scoreboard's "NEW LEADER" chip. Reads correctly for a late joiner: they
+  // land somewhere in this ~600ms window exactly as often as a continuous
+  // viewer would, rather than never seeing it because they missed the
+  // instant the change happened.
+  const newLeader = leaderChangedRecently(outcomes, elapsed);
   const scoreboardNode: ReactNode | undefined =
     sb !== null && state.kind === 'event' && state.phase === 'results'
       ? <Scoreboard data={sb} names={room.names} colors={room.colors} mode="expanded" />
@@ -211,6 +241,8 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
             turnIndex={state.turnIndex}
             athlete={state.athlete}
             scoreboard={scoreboardNode}
+            bios={bios}
+            roast={roast}
           />
         )}
 
@@ -228,13 +260,20 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
 
       {showDockedTicker && sb && (
         <>
-          <Scoreboard data={sb} names={room.names} colors={room.colors} mode="docked" />
+          <Scoreboard data={sb} names={room.names} colors={room.colors} mode="docked" leaderChangedRecently={newLeader} />
           <Scoreboard data={sb} names={room.names} colors={room.colors} mode="ticker" />
         </>
       )}
 
       {showBoardInterstitial && event && (
-        <BoardInterstitial names={room.names} colors={room.colors} locks={locks} total={room.names.length} justLocked={justLocked} />
+        <BoardInterstitial
+          names={room.names}
+          colors={room.colors}
+          locks={locks}
+          total={room.names.length}
+          justLocked={justLocked}
+          roastLine={justLockedEntry ? roast(justLockedEntry.athlete) : undefined}
+        />
       )}
 
       <header className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-3 pt-[max(0.6rem,env(safe-area-inset-top))] sm:px-5">

@@ -8,6 +8,7 @@ import {
 } from '../turnChoreo';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
+import type { AthleteBio } from '@/lib/jokes';
 
 type JumpType = 'vertical' | 'broad';
 
@@ -204,6 +205,7 @@ function broadScaleY(progress: number): number {
 export default function JumpScene(props: {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
+  bios?: AthleteBio[]; roast?: (athlete: number) => string;
 }) {
   const { event, names, colors, phaseDurationMs } = props;
   const type = event.type as JumpType;
@@ -214,7 +216,7 @@ export default function JumpScene(props: {
     <EventFrame
       {...props}
       introMessage={`${laneOrder(event.competitors).length} athletes chalk up for the ${meta.label.toLowerCase()}`}
-      renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+      renderTurn={({ athlete: a, turnIndex, lanes, progress, subline }) => {
         const finalValue = event.performances[a];
         const locked = progress >= STAT_REVEAL_FRACTION;
         const laneLabel = (
@@ -293,6 +295,7 @@ export default function JumpScene(props: {
                 round={event.round}
                 athleteName={names[a]}
                 athleteColor={colors[a]}
+                subline={subline}
                 statLabel={locked ? undefined : 'REACH'}
                 statValue={`${displayValue.toFixed(meta.decimals)}${meta.unit}`}
               />
@@ -374,6 +377,7 @@ export default function JumpScene(props: {
               round={event.round}
               athleteName={names[a]}
               athleteColor={colors[a]}
+              subline={subline}
               statLabel={locked ? undefined : 'DISTANCE'}
               statValue={`${countUpStat(progress, finalValue).toFixed(meta.decimals)}${meta.unit}`}
             />

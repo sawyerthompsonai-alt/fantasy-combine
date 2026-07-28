@@ -5,8 +5,10 @@ import {
   benchLockouts, staggeredSpin, doublePumpScaleY, dampedKeyframes,
   dampedHops, periodicPulse,
   sprintWorldX, sprintSpeed, speedToRunCycleSec, sprintLean, FINALE_GUN_FRACTION,
+  WALK_IN_FRAC, inWalkUpWindow, walkUpSubline,
   type Point,
 } from '@/components/scene/turnChoreo';
+import type { AthleteBio } from '@/lib/jokes';
 
 describe('cameraX', () => {
   it('holds at 0 while the runner is behind the viewport anchor', () => {
@@ -491,5 +493,71 @@ describe('FINALE_GUN_FRACTION', () => {
   it('is a fraction strictly between 0 and 1', () => {
     expect(FINALE_GUN_FRACTION).toBeGreaterThan(0);
     expect(FINALE_GUN_FRACTION).toBeLessThan(1);
+  });
+});
+
+describe('inWalkUpWindow', () => {
+  it('is true through the shared walk-in stage, for any event type', () => {
+    expect(inWalkUpWindow(0, 'bench')).toBe(true);
+    expect(inWalkUpWindow(WALK_IN_FRAC - 0.01, 'gauntlet')).toBe(true);
+  });
+
+  it('is false once the shared walk-in stage ends, for a non-dash event', () => {
+    expect(inWalkUpWindow(WALK_IN_FRAC + 0.01, 'bench')).toBe(false);
+    expect(inWalkUpWindow(WALK_IN_FRAC + 0.01, 'vertical')).toBe(false);
+    expect(inWalkUpWindow(WALK_IN_FRAC + 0.01, 'gauntlet')).toBe(false);
+  });
+
+  it('stays true through the dash stance hold, for all three dash-type events', () => {
+    for (const type of ['forty', 'threecone', 'shuttle'] as const) {
+      expect(inWalkUpWindow(DASH_BEATS.stance[1] - 0.01, type)).toBe(true);
+    }
+  });
+
+  it('is false past the stance hold, for dash-type events', () => {
+    expect(inWalkUpWindow(DASH_BEATS.stance[1] + 0.01, 'forty')).toBe(false);
+  });
+
+  it('does not extend the window for non-dash events, even past the stance boundary', () => {
+    expect(inWalkUpWindow(DASH_BEATS.stance[1] - 0.01, 'vertical')).toBe(false);
+    expect(inWalkUpWindow(DASH_BEATS.stance[1] - 0.01, 'bench')).toBe(false);
+  });
+});
+
+describe('walkUpSubline', () => {
+  const bio: AthleteBio = {
+    nickname: 'The Waiver Wire Wizard',
+    college: 'Gridiron State',
+    measurables: [
+      { label: 'HANDS', value: '17 inches' },
+      { label: 'VERTICAL', value: '"plenty"' },
+      { label: 'BENCH', value: 'one (1) rep' },
+    ],
+    scoutingLine: 'Elite trash talker. Questionable roster management.',
+  };
+
+  it('is undefined outside the walk-up window', () => {
+    expect(walkUpSubline(0.5, 'bench', bio, 0)).toBeUndefined();
+  });
+
+  it('is undefined when there is no bio', () => {
+    expect(walkUpSubline(0, 'bench', undefined, 0)).toBeUndefined();
+  });
+
+  it('includes the nickname and the turnIndex-selected measurable, quoted and separated by a middle dot', () => {
+    expect(walkUpSubline(0, 'bench', bio, 0)).toBe('“The Waiver Wire Wizard” · HANDS: 17 inches');
+    expect(walkUpSubline(0, 'bench', bio, 1)).toBe('“The Waiver Wire Wizard” · VERTICAL: "plenty"');
+    expect(walkUpSubline(0, 'bench', bio, 2)).toBe('“The Waiver Wire Wizard” · BENCH: one (1) rep');
+  });
+
+  it('rotates the measurable by turnIndex modulo the measurable count', () => {
+    expect(walkUpSubline(0, 'bench', bio, 3)).toBe(walkUpSubline(0, 'bench', bio, 0));
+    expect(walkUpSubline(0, 'bench', bio, 4)).toBe(walkUpSubline(0, 'bench', bio, 1));
+  });
+
+  it('extends into the dash stance hold for dash-type events', () => {
+    const midStance = (DASH_BEATS.stance[0] + DASH_BEATS.stance[1]) / 2;
+    expect(walkUpSubline(midStance, 'forty', bio, 0)).toBeDefined();
+    expect(walkUpSubline(midStance, 'bench', bio, 0)).toBeUndefined();
   });
 });

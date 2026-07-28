@@ -8,6 +8,7 @@ import {
 } from '../turnChoreo';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
+import type { AthleteBio } from '@/lib/jokes';
 
 const BALLS = 7;
 
@@ -94,6 +95,7 @@ function JugsMachine({ recoilPx }: { recoilPx: number }) {
 export default function GauntletScene(props: {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
+  bios?: AthleteBio[]; roast?: (athlete: number) => string;
 }) {
   const { event, names, colors, phaseDurationMs } = props;
   const meta = EVENT_META.gauntlet;
@@ -105,7 +107,7 @@ export default function GauntletScene(props: {
     <EventFrame
       {...props}
       introMessage={`${laneOrder(event.competitors).length} athletes run the gauntlet`}
-      renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+      renderTurn={({ athlete: a, turnIndex, lanes, progress, subline }) => {
         // Deterministic, matching the pre-v2 renderer: the *last* `drops`
         // balls in the 7-ball sequence are the drops, the rest are catches.
         const drops = Math.min(BALLS, event.performances[a]);
@@ -287,6 +289,7 @@ export default function GauntletScene(props: {
               round={event.round}
               athleteName={names[a]}
               athleteColor={colors[a]}
+              subline={subline}
               statLabel={revealed ? undefined : 'DROPS'}
               statValue={`${revealed ? drops : dropsSoFar}${meta.unit}`}
             />

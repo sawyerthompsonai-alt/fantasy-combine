@@ -8,6 +8,7 @@ import {
 } from '../turnChoreo';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
+import type { AthleteBio } from '@/lib/jokes';
 
 // --- Scene geometry ---------------------------------------------------
 // A fixed-size local stage (px), centered in the available frame — same
@@ -202,6 +203,7 @@ function BenchApparatus(props: {
 export default function BenchScene(props: {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
+  bios?: AthleteBio[]; roast?: (athlete: number) => string;
 }) {
   const { event, names, colors } = props;
   const meta = EVENT_META.bench;
@@ -210,7 +212,7 @@ export default function BenchScene(props: {
     <EventFrame
       {...props}
       introMessage={`${laneOrder(event.competitors).length} athletes chalk their hands · 225 lbs`}
-      renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+      renderTurn={({ athlete: a, turnIndex, lanes, progress, subline }) => {
         const finalReps = event.performances[a];
         const lockouts = benchLockouts(finalReps);
         const locked = progress >= STAT_REVEAL_FRACTION;
@@ -323,6 +325,7 @@ export default function BenchScene(props: {
               round={event.round}
               athleteName={names[a]}
               athleteColor={colors[a]}
+              subline={subline}
               statLabel={locked ? undefined : 'REPS'}
               statValue={`${repCount}${meta.unit}`}
             />

@@ -1,4 +1,5 @@
 import type { EventType } from '@/lib/types';
+import type { AthleteBio } from '@/lib/jokes';
 import type { AthletePose } from './Athlete';
 
 /** Ease-out curve (starts fast, settles) — used for travel and reveal
@@ -129,6 +130,41 @@ export const DASH_BEATS = {
 /** Turn progress at which the gun fires and the sprint begins — also where
  * Broadcast's whistle-at-sprint-start beat triggers for dash-type events. */
 export const SPRINT_START_FRAC = DASH_BEATS.sprint[0];
+
+// --- Walk-up nickname sublines -----------------------------------------
+
+const DASH_EVENT_TYPES = new Set<EventType>(['forty', 'threecone', 'shuttle']);
+
+/** True while a turn's LowerThird ought to keep showing the walk-up
+ * "nickname · measurable" subline: the shared walk-in window every scene
+ * uses (`turnWindow`'s 'walk-in' stage), extended through the dash drills'
+ * 3-point-stance hold (`DASH_BEATS.stance`) for forty/threecone/shuttle.
+ * Those three events' own walk-in finishes at the same instant
+ * `turnWindow`'s does (`WALK_IN_FRAC === DASH_BEATS.walkIn[1]`), but the
+ * camera holds on the athlete in the stance for a while longer before the
+ * gun fires — the nickname reads better across that whole hold than
+ * vanishing the instant the walk-in animation itself completes. */
+export function inWalkUpWindow(progress: number, eventType: EventType): boolean {
+  if (turnWindow(progress).stage === 'walk-in') return true;
+  return DASH_EVENT_TYPES.has(eventType) && progress < DASH_BEATS.stance[1];
+}
+
+/** The walk-up LowerThird subline text for one turn: the athlete's
+ * nickname plus one of their three scouted measurables, rotated by
+ * `turnIndex` so consecutive athletes in an event's lineup feature a
+ * different stat instead of always leading with the same one — a small
+ * variety beat, not a claim that any one measurable is "the" one for that
+ * event. `undefined` outside the walk-up window (see `inWalkUpWindow`) or
+ * when no bio is available for this athlete. Pure function of (progress,
+ * eventType, bio, turnIndex) — no randomness — so a late joiner lands on
+ * the same text a continuous viewer would see at that instant. */
+export function walkUpSubline(
+  progress: number, eventType: EventType, bio: AthleteBio | undefined, turnIndex: number,
+): string | undefined {
+  if (!bio || !inWalkUpWindow(progress, eventType)) return undefined;
+  const m = bio.measurables[turnIndex % bio.measurables.length];
+  return `“${bio.nickname}” · ${m.label}: ${m.value}`;
+}
 
 /** Camera x (viewport %) that keeps the runner ~38% from the left once
  * they've traveled past that anchor point; clamped to the track bounds

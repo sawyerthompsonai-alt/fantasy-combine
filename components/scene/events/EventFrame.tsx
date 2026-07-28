@@ -3,7 +3,8 @@ import Athlete from '../Athlete';
 import LowerThird from '../LowerThird';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
-import { laneOrder } from '../turnChoreo';
+import type { AthleteBio } from '@/lib/jokes';
+import { laneOrder, walkUpSubline } from '../turnChoreo';
 
 export interface TurnRenderCtx {
   athlete: number;
@@ -11,6 +12,10 @@ export interface TurnRenderCtx {
   lanes: number[];
   /** 0..1 progress through this athlete's TURN_MS spotlight window. */
   progress: number;
+  /** Walk-up "nickname · measurable" line for the LowerThird's subline,
+   * populated only during the early window (see `walkUpSubline`) —
+   * `undefined` the rest of the turn. */
+  subline?: string;
 }
 
 export interface EventFrameProps {
@@ -32,6 +37,14 @@ export interface EventFrameProps {
    * (which still renders when the prop is absent, for backward
    * compatibility with any caller that doesn't pass one). */
   scoreboard?: ReactNode;
+  /** Per-athlete comedy bios (Task 1/7's `athleteBios`) — drives the turn
+   * walk-up subline. Absent renders no subline (e.g. any caller that
+   * doesn't pass one). */
+  bios?: AthleteBio[];
+  /** Elimination farewell line for one cut athlete, e.g. Task 1's
+   * `farewellLine` bound to the room's joke seed. Absent renders no roast
+   * copy under the ELIMINATED beat. */
+  roast?: (athlete: number) => string;
 }
 
 /**
@@ -44,6 +57,7 @@ export interface EventFrameProps {
  */
 export default function EventFrame({
   event, names, colors, phase, phaseElapsedMs, phaseDurationMs, turnIndex, athlete, introMessage, renderTurn, scoreboard,
+  bios, roast,
 }: EventFrameProps) {
   const meta = EVENT_META[event.type];
   const lanes = laneOrder(event.competitors);
@@ -70,7 +84,8 @@ export default function EventFrame({
     const a = athlete ?? lanes[0];
     const k = turnIndex ?? 0;
     const progress = phaseDurationMs > 0 ? Math.min(1, phaseElapsedMs / phaseDurationMs) : 1;
-    return <>{renderTurn({ athlete: a, turnIndex: k, lanes, progress })}</>;
+    const subline = walkUpSubline(progress, event.type, bios?.[a], k);
+    return <>{renderTurn({ athlete: a, turnIndex: k, lanes, progress, subline })}</>;
   }
 
   if (phase === 'results') {
@@ -118,10 +133,21 @@ export default function EventFrame({
       : `${cut.length} ELIMINATED · PICKS LOCKED`;
   return (
     <>
-      <div className="flex flex-1 items-center justify-center gap-6 px-4 pb-28 pt-6">
-        {cut.map(a => (
-          <Athlete key={a} name={names[a]} color={colors[a]} pose="idle" size={96} dimmed />
-        ))}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 pb-28 pt-6">
+        <div className="flex flex-wrap items-center justify-center gap-6">
+          {cut.map(a => (
+            <Athlete key={a} name={names[a]} color={colors[a]} pose="idle" size={96} dimmed />
+          ))}
+        </div>
+        {roast && (
+          <div className="flex max-w-md flex-col items-center gap-1 text-center">
+            {cut.map(a => (
+              <p key={a} className="max-w-full truncate px-2 text-xs italic text-[var(--muted)] sm:text-sm">
+                {roast(a)}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
       <LowerThird visible tone="alert" label={meta.label} message={message} />
     </>
