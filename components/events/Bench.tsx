@@ -22,7 +22,9 @@ export default function Bench({ event, names, colors, phase, phaseElapsedMs, pha
               <Avatar name={names[a]} color={colors[a]} size={40} />
               <p className="mt-1 truncate text-sm font-semibold">{names[a]}</p>
               <p className={`stat text-3xl ${done ? '' : 'animate-pulse'}`}>{reps}</p>
-              <p className="text-xs text-[var(--muted)]">{done ? 'RACKED' : 'lifting…'}</p>
+              <p className="text-xs text-[var(--muted)]">
+                {phase === 'results' ? `RACKED · ${finalReps}${EVENT_META.bench.unit}` : done ? 'RACKED' : 'lifting…'}
+              </p>
             </div>
           );
         })}

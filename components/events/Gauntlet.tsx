@@ -15,6 +15,9 @@ export default function Gauntlet({ event, names, colors, phase, phaseElapsedMs, 
       <div className="space-y-2">
         {lanes.map(a => {
           const drops = event.performances[a];
+          // cap the visualized drops at BALLS so the row still differentiates
+          // athletes when `drops` (an uncapped rank index) exceeds ball count
+          const shownDrops = Math.min(drops, BALLS);
           const out = phase === 'results' && event.eliminated.includes(a);
           return (
             <div key={a} className={`flex items-center gap-3 rounded border border-[var(--line)] bg-[var(--panel)] px-3 py-2 ${out ? 'opacity-50' : ''}`}>
@@ -22,8 +25,8 @@ export default function Gauntlet({ event, names, colors, phase, phaseElapsedMs, 
               <span className="w-32 truncate text-sm font-semibold">{names[a]}</span>
               <span className="flex gap-1 text-lg">
                 {Array.from({ length: thrown }, (_, b) => (
-                  // last `drops` balls are the drops — deterministic, no rng needed
-                  <span key={b}>{b >= BALLS - drops ? '❌' : '🏈'}</span>
+                  // last `shownDrops` balls are the drops — deterministic, no rng needed
+                  <span key={b}>{b >= BALLS - shownDrops ? '❌' : '🏈'}</span>
                 ))}
               </span>
               {phase === 'results' && (
