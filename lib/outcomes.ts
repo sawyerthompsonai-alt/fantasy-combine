@@ -25,6 +25,7 @@ function buildEvent(
   order: number[],
   seed: string,
   eventIndex: number,
+  round?: number,
 ): EventResult {
   const rng = createRng(`${seed}:perf:${eventIndex}`);
   const { base, step } = STAT_BASE[type];
@@ -43,7 +44,7 @@ function buildEvent(
     performances[athlete] = Number(clamped.toFixed(decimals));
   });
   const pickOf = (athlete: number) => order.indexOf(athlete) + 1;
-  return {
+  const event: EventResult = {
     type,
     competitors,
     ranking,
@@ -51,13 +52,49 @@ function buildEvent(
     eliminated,
     picksLocked: eliminated.map(a => ({ pick: pickOf(a), athlete: a })),
   };
+  if (round !== undefined) event.round = round;
+  return event;
+}
+
+// Builds a length-P lineup by cycling the 7-type pool: each cycle is an
+// independent seeded shuffle of the full pool, so types repeat only once
+// every 7 events. The seam between cycles is checked so a type never
+// immediately repeats back-to-back.
+function buildLineup(seed: string, p: number): EventType[] {
+  const lineup: EventType[] = [];
+  let cycle = 0;
+  while (lineup.length < p) {
+    let shuffled = seededShuffle(POOL, seed, `lineup:${cycle}`);
+    const prev = lineup[lineup.length - 1];
+    if (prev !== undefined && shuffled[0] === prev) {
+      // rotate left by one: guaranteed to differ from prev since prev
+      // appears exactly once in the permutation.
+      shuffled = [...shuffled.slice(1), shuffled[0]];
+    }
+    lineup.push(...shuffled);
+    cycle += 1;
+  }
+  return lineup.slice(0, p);
+}
+
+// Parallel to a lineup: undefined for a type's first appearance, otherwise
+// the 1-indexed count of how many times that type has appeared so far.
+function computeRounds(lineup: EventType[]): (number | undefined)[] {
+  const counts: Partial<Record<EventType, number>> = {};
+  return lineup.map(type => {
+    const count = (counts[type] ?? 0) + 1;
+    counts[type] = count;
+    return count >= 2 ? count : undefined;
+  });
 }
 
 export function deriveOutcomes(seed: string, names: string[]): Outcomes {
   const n = names.length;
   const order = seededShuffle(names.map((_, i) => i), seed, 'order');
   const batches = eliminationBatches(n);
-  const lineup = seededShuffle(POOL, seed, 'lineup').slice(0, batches.length);
+  const p = batches.length;
+  const lineup = buildLineup(seed, p);
+  const rounds = computeRounds(lineup);
   const events: EventResult[] = [];
 
   let alive = [...order]; // best pick first
@@ -67,7 +104,7 @@ export function deriveOutcomes(seed: string, names: string[]): Outcomes {
     const eliminated = [...cut].reverse();            // reveal worst pick first
     const rankedSurvivors = seededShuffle(survivors, seed, `event:${e}`);
     const ranking = [...rankedSurvivors, ...cut];     // last place = worst pick
-    events.push(buildEvent(lineup[e], [...alive], ranking, eliminated, order, seed, e));
+    events.push(buildEvent(lineup[e], [...alive], ranking, eliminated, order, seed, e, rounds[e]));
     alive = survivors;
   });
 

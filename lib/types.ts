@@ -9,6 +9,7 @@ export interface EventResult {
   performances: Record<number, number>;  // athleteIdx → stat value
   eliminated: number[];                  // reveal order: worst pick first
   picksLocked: { pick: number; athlete: number }[]; // same order as eliminated
+  round?: number;                        // 2+ for a repeat appearance of this event type
 }
 
 export interface Outcomes {

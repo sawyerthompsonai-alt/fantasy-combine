@@ -54,9 +54,11 @@ describe('lockedPicks', () => {
   it('a latecomer at time T sees exactly the picks locked by T', () => {
     const { segments } = buildTimeline(outcomes);
     const results1 = segments[5]; // event 1 results
-    const t = results1.startMs + 2 * LOCK_MS + 10;
+    // number of picks that lock within event 1's own results phase by time t
+    const k = Math.min(2, outcomes.events[1].picksLocked.length);
+    const t = results1.startMs + k * LOCK_MS + 10;
     const locks = lockedPicks(outcomes, t);
     const batch0 = outcomes.events[0].picksLocked.length;
-    expect(locks.length).toBe(batch0 + 2);
+    expect(locks.length).toBe(batch0 + k);
   });
 });
