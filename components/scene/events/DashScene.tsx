@@ -4,36 +4,11 @@ import LowerThird from '../LowerThird';
 import TrackLines from '../sets/TrackLines';
 import EventFrame from './EventFrame';
 import {
-  poseFor, laneOrder, countUpStat, pathPosition, facingFromDx, edgeFade, easeOut, clamp01,
-  DASH_BEATS, cameraX, STAT_REVEAL_FRACTION, type Point,
+  laneOrder, countUpStat, facingFromDx, edgeFade, easeOut, clamp01,
+  DASH_BEATS, cameraX, type Point,
 } from '../turnChoreo';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
-
-type WaypointDashType = 'threecone' | 'shuttle';
-
-interface DashConfig {
-  /** Percent-space waypoints the runner travels through, in order. */
-  waypoints: Point[];
-  /** Cone markers (3-cone drill). */
-  cones?: Point[];
-  /** Touch-line markers, x percentages (shuttle). */
-  touchLines?: number[];
-  intro: string;
-}
-
-const DASH_CONFIG: Record<WaypointDashType, DashConfig> = {
-  threecone: {
-    waypoints: [{ x: 14, y: 82 }, { x: 46, y: 82 }, { x: 46, y: 50 }, { x: 14, y: 82 }, { x: 88, y: 58 }],
-    cones: [{ x: 14, y: 82 }, { x: 46, y: 82 }, { x: 46, y: 50 }],
-    intro: 'athletes eye the cones',
-  },
-  shuttle: {
-    waypoints: [{ x: 50, y: 80 }, { x: 76, y: 80 }, { x: 24, y: 80 }, { x: 52, y: 80 }],
-    touchLines: [24, 50, 76],
-    intro: 'athletes set for the shuttle',
-  },
-};
 
 function Cone({ x, y }: Point) {
   return (
@@ -46,8 +21,19 @@ function Cone({ x, y }: Point) {
   );
 }
 
-function TouchLine({ x }: { x: number }) {
-  return <div className="absolute bottom-[12%] h-8 w-0.5 -translate-x-1/2 bg-white/25" style={{ left: `${x}%` }} />;
+/** A shuttle touch line drawn like a yard line (thin rule + faint number),
+ * not the panning `TrackLines` grid — the shuttle's local percent-space
+ * isn't calibrated to that layer's world-yard scale, and a full-width grid
+ * would be clutter around a drill contained in a small strip of the frame. */
+function ShuttleLine({ x, label }: { x: number; label: string }) {
+  return (
+    <div className="absolute -translate-x-1/2" style={{ left: `${x}%`, top: '52%', bottom: '10%' }}>
+      <div className="h-full w-px bg-white/25" />
+      <span className="display absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white/40">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 // --- 40-yard dash: world-space track geometry (viewport-% units, 3 world
@@ -62,6 +48,8 @@ const WALK_IN_Y_START = 88;
 // bottom of the SVG figure (its feet) — Athlete stacks a name chip below
 // the figure, so a bare 'center bottom' origin would pivot around the
 // bottom of the chip instead and visibly swing the whole figure sideways.
+// Shared by all three dash drills (forty/threecone/shuttle) for the same
+// reason.
 const ATHLETE_SIZE = 84;
 
 /** Runner's world-x position as a pure function of turn progress. Three
@@ -139,6 +127,208 @@ function fortyPose(progress: number): AthletePose {
   return 'walk';
 }
 
+// --- 3-cone + shuttle: shared choreography helpers -------------------------
+// Both drills run in a single static frame (no camera pan — the whole route
+// fits on screen at once), reuse the walk-in / stance / jog-off beats from
+// DASH_BEATS, and turn the sprint+through window [0.28, 0.70] into a route
+// window the athlete travels the full waypoint path across.
+
+/** Smooth "ease in, ease out" cubic (0 slope at both ends) — applied to
+ * each waypoint segment's local progress so the runner decelerates into
+ * every cone/line and re-accelerates out of it, instead of gliding through
+ * corners at constant speed. This is what gives the 3-cone its hard plants
+ * and the shuttle its explosive redirects "for free" from pure geometry. */
+function smoothstep(u: number): number {
+  const c = clamp01(u);
+  return c * c * (3 - 2 * c);
+}
+
+function cumulativeDist(waypoints: Point[]): number[] {
+  const dist = [0];
+  for (let i = 1; i < waypoints.length; i++) {
+    dist.push(dist[i - 1] + Math.hypot(waypoints[i].x - waypoints[i - 1].x, waypoints[i].y - waypoints[i - 1].y));
+  }
+  return dist;
+}
+
+/** Position + current-segment direction along a waypoint path at route
+ * fraction `u` (0..1), with each segment's local progress smoothstep-eased
+ * (see above) rather than linear. */
+function easedPathPosition(waypoints: Point[], cumDist: number[], u: number): Point & { dx: number; dy: number } {
+  const total = cumDist[cumDist.length - 1] || 1;
+  const target = clamp01(u) * total;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const segStart = cumDist[i];
+    const segEnd = cumDist[i + 1];
+    if (target <= segEnd || i === waypoints.length - 2) {
+      const len = segEnd - segStart;
+      const local = len === 0 ? 0 : smoothstep((target - segStart) / len);
+      const a = waypoints[i];
+      const b = waypoints[i + 1];
+      return { x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local, dx: b.x - a.x, dy: b.y - a.y };
+    }
+  }
+  const last = waypoints[waypoints.length - 1];
+  return { ...last, dx: 0, dy: 0 };
+}
+
+/** Path-length distance to the nearest *interior* waypoint (a real plant —
+ * endpoints are excluded, they're the start/finish, not a redirect) plus
+ * the turn-direction sign there (cross product of the incoming/outgoing
+ * unit directions: 0 for a straight-line reversal like a shuttle line or
+ * the 3-cone's out-and-back leg, ±1 for an angular cut like the L-drill's
+ * corners). Drives both the plant lean and the run-cycle slowdown. */
+function nearestPlant(waypoints: Point[], cumDist: number[], u: number): { dist: number; sign: number } {
+  const total = cumDist[cumDist.length - 1] || 1;
+  const target = clamp01(u) * total;
+  let dist = Infinity;
+  let sign = 0;
+  for (let i = 1; i < waypoints.length - 1; i++) {
+    const d = Math.abs(target - cumDist[i]);
+    if (d < dist) {
+      const prev = waypoints[i - 1];
+      const cur = waypoints[i];
+      const next = waypoints[i + 1];
+      const inLen = Math.hypot(cur.x - prev.x, cur.y - prev.y) || 1;
+      const outLen = Math.hypot(next.x - cur.x, next.y - cur.y) || 1;
+      const inX = (cur.x - prev.x) / inLen;
+      const inY = (cur.y - prev.y) / inLen;
+      const outX = (next.x - cur.x) / outLen;
+      const outY = (next.y - cur.y) / outLen;
+      dist = d;
+      sign = Math.sign(inX * outY - inY * outX);
+    }
+  }
+  return { dist, sign };
+}
+
+// Path-length units (in the shared percent-space) on either side of a
+// plant where the lean/cadence effects apply.
+const PLANT_WINDOW = 9;
+const PLANT_LEAN_DEG = 14;
+
+function plantLean(plant: { dist: number; sign: number }, maxDeg: number): number {
+  if (plant.dist >= PLANT_WINDOW) return 0;
+  return plant.sign * maxDeg * (1 - plant.dist / PLANT_WINDOW);
+}
+
+function plantRunCycleSec(plant: { dist: number }): number {
+  const proximity = clamp01(1 - plant.dist / PLANT_WINDOW);
+  return 0.42 + 0.24 * proximity;
+}
+
+/** Maps overall turn progress to route fraction 0..1 across the shared
+ * stance-end -> official-reveal window ([0.28, 0.70] per DASH_BEATS). */
+function routeU(progress: number): number {
+  const { stance, official } = DASH_BEATS;
+  return clamp01((progress - stance[1]) / (official - stance[1]));
+}
+
+/** walk / stance / run / walk — the pose rhythm every dash drill shares. */
+function dashPhasePose(progress: number): AthletePose {
+  const { walkIn, stance, official } = DASH_BEATS;
+  if (progress < walkIn[1]) return 'walk';
+  if (progress < stance[1]) return 'stance';
+  if (progress < official) return 'run';
+  return 'walk';
+}
+
+/** Eases the athlete in from just below the stance mark during walk-in. */
+function routeWalkInY(progress: number, standY: number): number {
+  const { walkIn } = DASH_BEATS;
+  if (progress >= walkIn[1]) return standY;
+  const fromY = standY + 10;
+  const u = easeOut(clamp01(progress / walkIn[1]));
+  return fromY - (fromY - standY) * u;
+}
+
+/** A few more steps' drift past the finish line during jog-off, along the
+ * route's final direction. */
+function routeJogOffOffset(progress: number, dirX: number, dirY: number, amount = 6): { dx: number; dy: number } {
+  const { jogOff } = DASH_BEATS;
+  if (progress < jogOff[0]) return { dx: 0, dy: 0 };
+  const u = easeOut(clamp01((progress - jogOff[0]) / (jogOff[1] - jogOff[0])));
+  return { dx: dirX * amount * u, dy: dirY * amount * u };
+}
+
+// --- 3-cone (L-drill) geometry ---------------------------------------------
+// Cone 1 at start, Cone 2 five yards on, Cone 3 five yards up from Cone 2.
+// Route: C1 -> C2 -> C1 -> C2 -> hook wide around C2 -> C3 -> loop tight
+// around C3 -> back to C2 -> finish at C1.
+const THREE_CONE_C1: Point = { x: 30, y: 78 };
+const THREE_CONE_C2: Point = { x: 62, y: 78 };
+const THREE_CONE_C3: Point = { x: 62, y: 50 };
+const THREE_CONE_WAYPOINTS: Point[] = [
+  THREE_CONE_C1,
+  THREE_CONE_C2,
+  THREE_CONE_C1,
+  THREE_CONE_C2,
+  { x: 62, y: 73 },
+  THREE_CONE_C3,
+  { x: 66, y: 47 },
+  { x: 62, y: 44 },
+  { x: 58, y: 50 },
+  THREE_CONE_C2,
+  THREE_CONE_C1,
+];
+const THREE_CONE_CUM = cumulativeDist(THREE_CONE_WAYPOINTS);
+const THREE_CONE_CONES: Point[] = [THREE_CONE_C1, THREE_CONE_C2, THREE_CONE_C3];
+
+// --- Shuttle (5-10-5) geometry ----------------------------------------------
+// Start straddling the 50 (the "0" line), touch the 72 (right "5"), touch
+// the 28 (left "5"), run through the 58.
+const SHUTTLE_START: Point = { x: 50, y: 80 };
+const SHUTTLE_WAYPOINTS: Point[] = [SHUTTLE_START, { x: 72, y: 80 }, { x: 28, y: 80 }, { x: 58, y: 80 }];
+const SHUTTLE_CUM = cumulativeDist(SHUTTLE_WAYPOINTS);
+const SHUTTLE_LINES: { x: number; label: string }[] = [
+  { x: 28, label: '5' },
+  { x: 50, label: '0' },
+  { x: 72, label: '5' },
+];
+// The two touch waypoints (indices 1 and 2), converted from route-fraction
+// to overall turn progress once at module load — routeU's mapping is
+// linear, so this conversion doesn't depend on any per-render state.
+const SHUTTLE_TOUCH_PROGRESS = [1, 2].map(i => {
+  const u = SHUTTLE_CUM[i] / SHUTTLE_CUM[SHUTTLE_CUM.length - 1];
+  return DASH_BEATS.stance[1] + u * (DASH_BEATS.official - DASH_BEATS.stance[1]);
+});
+// 120ms hand-touch window, converted to a progress-fraction against the
+// turn's actual duration (mirrors OfficialStamp's ms->progress conversion).
+const TOUCH_WINDOW_MS = 120;
+
+/** Extracted from the forty branch's inline OFFICIAL treatment (Task 8) so
+ * all three dash drills share one stamp: a scale-in plus a white flash
+ * frame, both timed in real ms (converted to a progress-delta via
+ * `phaseDurationMs`) but still a pure function of `progress` — no
+ * Date.now() during render, so late joiners land on the correct frame. */
+function OfficialStamp({
+  progress, value, unit, phaseDurationMs,
+}: {
+  progress: number; value: string; unit: string; phaseDurationMs: number;
+}) {
+  const sinceOfficial = Math.max(0, progress - DASH_BEATS.official);
+  const durMs = Math.max(1, phaseDurationMs);
+  const scaleU = clamp01(sinceOfficial / (300 / durMs));
+  const flashU = clamp01(sinceOfficial / (180 / durMs));
+  const stampScale = 0.9 + 0.1 * easeOut(scaleU);
+  const flashOpacity = 0.6 * (1 - flashU);
+
+  return (
+    <>
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-20 bg-white" style={{ opacity: flashOpacity }} />
+      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+        <div
+          className="display rounded-lg border-2 border-[var(--accent)] bg-[var(--bg)]/90 px-6 py-3 text-center shadow-[0_0_30px_rgba(245,166,35,0.45)]"
+          style={{ transform: `scale(${stampScale})` }}
+        >
+          <p className="text-[10px] tracking-[0.2em] text-[var(--accent)] sm:text-xs">OFFICIAL</p>
+          <p className="stat text-2xl sm:text-4xl">{value}{unit}</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function DashScene(props: {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
@@ -146,9 +336,7 @@ export default function DashScene(props: {
   const { event, names, colors, phaseDurationMs } = props;
   const meta = EVENT_META[event.type];
 
-  // The 40 gets its own stance → gun → pan → OFFICIAL choreography; 3-cone
-  // and shuttle keep the shared waypoint-path renderer below (rebuilt next
-  // in Task 9).
+  // The 40 gets its own stance → gun → pan → OFFICIAL choreography.
   if (event.type === 'forty') {
     return (
       <EventFrame
@@ -170,16 +358,6 @@ export default function DashScene(props: {
 
           const startVx = START_WORLD - cam;
           const finishVx = FINISH_WORLD - cam;
-
-          // OFFICIAL stamp: scale-in + a white flash frame, both timed in
-          // real ms (converted to a progress-delta via phaseDurationMs) but
-          // still driven purely by `progress` — no Date.now() during render.
-          const sinceOfficial = Math.max(0, progress - DASH_BEATS.official);
-          const durMs = Math.max(1, phaseDurationMs);
-          const scaleU = clamp01(sinceOfficial / (300 / durMs));
-          const flashU = clamp01(sinceOfficial / (180 / durMs));
-          const stampScale = 0.9 + 0.1 * easeOut(scaleU);
-          const flashOpacity = 0.6 * (1 - flashU);
 
           return (
             <>
@@ -219,24 +397,12 @@ export default function DashScene(props: {
                 </div>
 
                 {locked && (
-                  <>
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0 z-20 bg-white"
-                      style={{ opacity: flashOpacity }}
-                    />
-                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-                      <div
-                        className="display rounded-lg border-2 border-[var(--accent)] bg-[var(--bg)]/90 px-6 py-3 text-center shadow-[0_0_30px_rgba(245,166,35,0.45)]"
-                        style={{ transform: `scale(${stampScale})` }}
-                      >
-                        <p className="text-[10px] tracking-[0.2em] text-[var(--accent)] sm:text-xs">OFFICIAL</p>
-                        <p className="stat text-2xl sm:text-4xl">
-                          {finalValue.toFixed(meta.decimals)}{meta.unit}
-                        </p>
-                      </div>
-                    </div>
-                  </>
+                  <OfficialStamp
+                    progress={progress}
+                    value={finalValue.toFixed(meta.decimals)}
+                    unit={meta.unit}
+                    phaseDurationMs={phaseDurationMs}
+                  />
                 )}
               </div>
               <LowerThird
@@ -255,20 +421,164 @@ export default function DashScene(props: {
     );
   }
 
-  const type = event.type as WaypointDashType;
-  const cfg = DASH_CONFIG[type];
+  // 3-cone (L-drill): sharp-plant agility route, one static frame.
+  if (event.type === 'threecone') {
+    return (
+      <EventFrame
+        {...props}
+        introMessage={`${laneOrder(event.competitors).length} athletes eye the cones`}
+        renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
+          const finalValue = event.performances[a];
+          const displayValue = countUpStat(progress, finalValue);
+          const locked = progress >= DASH_BEATS.official;
+          const opacity = edgeFade(progress);
+          const { stance, official } = DASH_BEATS;
 
+          let x: number;
+          let y: number;
+          let facing: 'left' | 'right' = 'right';
+          let lean = 0;
+          let runCycleSec = 0.42;
+          const pose = dashPhasePose(progress);
+
+          if (progress < stance[1]) {
+            x = THREE_CONE_C1.x;
+            y = routeWalkInY(progress, THREE_CONE_C1.y);
+          } else if (progress < official) {
+            const u = routeU(progress);
+            const pos = easedPathPosition(THREE_CONE_WAYPOINTS, THREE_CONE_CUM, u);
+            x = pos.x;
+            y = pos.y;
+            facing = facingFromDx(pos.dx, facing);
+            const plant = nearestPlant(THREE_CONE_WAYPOINTS, THREE_CONE_CUM, u);
+            lean = plantLean(plant, PLANT_LEAN_DEG);
+            runCycleSec = plantRunCycleSec(plant);
+          } else {
+            const finish = THREE_CONE_WAYPOINTS[THREE_CONE_WAYPOINTS.length - 1]; // back at C1
+            const drift = routeJogOffOffset(progress, -1, 0); // final leg (C2 -> C1) runs leftward
+            x = finish.x + drift.dx;
+            y = finish.y + drift.dy;
+            facing = 'left';
+          }
+
+          return (
+            <>
+              <div className="relative flex-1 px-4 pb-28 pt-6">
+                <p className="display absolute left-4 top-4 text-[10px] text-[var(--muted)] sm:text-xs">
+                  LANE {turnIndex + 1} / {lanes.length}
+                </p>
+
+                <svg
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  <polyline
+                    points={THREE_CONE_WAYPOINTS.map(p => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke="rgba(245,166,35,0.28)"
+                    strokeWidth="0.6"
+                    strokeDasharray="1.6 1.4"
+                  />
+                </svg>
+                {THREE_CONE_CONES.map((c, i) => <Cone key={i} x={c.x} y={c.y} />)}
+
+                <div
+                  className="absolute"
+                  style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -100%)', opacity }}
+                >
+                  <div style={{ transform: `rotate(${lean}deg)`, transformOrigin: `center ${ATHLETE_SIZE}px` }}>
+                    <Athlete
+                      name={names[a]}
+                      color={colors[a]}
+                      pose={pose}
+                      size={ATHLETE_SIZE}
+                      facing={facing}
+                      spotlight
+                      runCycleSec={runCycleSec}
+                    />
+                  </div>
+                </div>
+
+                {locked && (
+                  <OfficialStamp
+                    progress={progress}
+                    value={finalValue.toFixed(meta.decimals)}
+                    unit={meta.unit}
+                    phaseDurationMs={phaseDurationMs}
+                  />
+                )}
+              </div>
+              <LowerThird
+                visible
+                label={meta.label}
+                round={event.round}
+                athleteName={names[a]}
+                athleteColor={colors[a]}
+                statLabel={locked ? undefined : 'CLOCK'}
+                statValue={`${displayValue.toFixed(meta.decimals)}${meta.unit}`}
+              />
+            </>
+          );
+        }}
+      />
+    );
+  }
+
+  // Shuttle (5-10-5): hand touch at each line, one static frame.
   return (
     <EventFrame
       {...props}
-      introMessage={`${laneOrder(event.competitors).length} ${cfg.intro}`}
+      introMessage={`${laneOrder(event.competitors).length} athletes set for the shuttle`}
       renderTurn={({ athlete: a, turnIndex, lanes, progress }) => {
-        const pos = pathPosition(cfg.waypoints, progress);
-        const facing = facingFromDx(pos.dx);
         const finalValue = event.performances[a];
         const displayValue = countUpStat(progress, finalValue);
-        const locked = progress >= STAT_REVEAL_FRACTION;
+        const locked = progress >= DASH_BEATS.official;
         const opacity = edgeFade(progress);
+        const { stance, official } = DASH_BEATS;
+        const durMs = Math.max(1, phaseDurationMs);
+        const touchHalfWindowFrac = (TOUCH_WINDOW_MS / 2) / durMs;
+
+        let x: number;
+        let y: number;
+        let facing: 'left' | 'right' = 'right';
+        let runCycleSec = 0.42;
+        let dipScaleY = 1;
+        let dipTranslateYPct = 0;
+        let pose = dashPhasePose(progress);
+
+        if (progress < stance[1]) {
+          x = SHUTTLE_START.x;
+          y = routeWalkInY(progress, SHUTTLE_START.y);
+        } else if (progress < official) {
+          const u = routeU(progress);
+          const pos = easedPathPosition(SHUTTLE_WAYPOINTS, SHUTTLE_CUM, u);
+          x = pos.x;
+          y = pos.y;
+          facing = facingFromDx(pos.dx, facing);
+          const plant = nearestPlant(SHUTTLE_WAYPOINTS, SHUTTLE_CUM, u);
+          runCycleSec = plantRunCycleSec(plant);
+
+          // Hand touch: a triangular dip peaking exactly on the touch
+          // instant, 120ms wide, at each of the two interior waypoints
+          // (the 72-line and the 28-line) — a down-reach dip + 'catch'
+          // pose that reads as the hand hitting the ground.
+          const dip = SHUTTLE_TOUCH_PROGRESS.reduce((max, touchProgress) => {
+            const d = Math.abs(progress - touchProgress);
+            const strength = d >= touchHalfWindowFrac ? 0 : 1 - d / touchHalfWindowFrac;
+            return Math.max(max, strength);
+          }, 0);
+          if (dip > 0.15) pose = 'catch';
+          dipScaleY = 1 - 0.14 * dip;
+          dipTranslateYPct = 6 * dip;
+        } else {
+          const finish = SHUTTLE_WAYPOINTS[SHUTTLE_WAYPOINTS.length - 1]; // through the 58
+          const drift = routeJogOffOffset(progress, 1, 0); // final leg (28 -> 58) runs rightward
+          x = finish.x + drift.dx;
+          y = finish.y + drift.dy;
+          facing = 'right';
+        }
 
         return (
           <>
@@ -284,27 +594,45 @@ export default function DashScene(props: {
                 preserveAspectRatio="none"
               >
                 <polyline
-                  points={cfg.waypoints.map(p => `${p.x},${p.y}`).join(' ')}
+                  points={SHUTTLE_WAYPOINTS.map(p => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="rgba(245,166,35,0.28)"
                   strokeWidth="0.6"
                   strokeDasharray="1.6 1.4"
                 />
               </svg>
-              {cfg.cones?.map((c, i) => <Cone key={i} x={c.x} y={c.y} />)}
-              {cfg.touchLines?.map(x => <TouchLine key={x} x={x} />)}
+              {SHUTTLE_LINES.map(l => <ShuttleLine key={l.x} x={l.x} label={l.label} />)}
 
               <div
                 className="absolute"
-                style={{
-                  left: `${pos.x}%`,
-                  top: `${pos.y}%`,
-                  transform: 'translate(-50%, -100%)',
-                  opacity,
-                }}
+                style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -100%)', opacity }}
               >
-                <Athlete name={names[a]} color={colors[a]} pose={poseFor(event.type)} size={84} facing={facing} spotlight />
+                <div
+                  style={{
+                    transform: `scaleY(${dipScaleY}) translateY(${dipTranslateYPct}%)`,
+                    transformOrigin: `center ${ATHLETE_SIZE}px`,
+                  }}
+                >
+                  <Athlete
+                    name={names[a]}
+                    color={colors[a]}
+                    pose={pose}
+                    size={ATHLETE_SIZE}
+                    facing={facing}
+                    spotlight
+                    runCycleSec={runCycleSec}
+                  />
+                </div>
               </div>
+
+              {locked && (
+                <OfficialStamp
+                  progress={progress}
+                  value={finalValue.toFixed(meta.decimals)}
+                  unit={meta.unit}
+                  phaseDurationMs={phaseDurationMs}
+                />
+              )}
             </div>
             <LowerThird
               visible
