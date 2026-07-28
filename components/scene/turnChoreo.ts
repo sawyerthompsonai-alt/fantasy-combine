@@ -140,6 +140,67 @@ export function cameraX(runnerWorldPct: number, viewportAnchor = 38, trackMax = 
   return Math.min(trackMax, Math.max(0, runnerWorldPct - viewportAnchor));
 }
 
+// --- Head-to-head sprint (finale) --------------------------------------
+// Generic versions of the 40-yard dash's world-position/speed/lean math
+// (DashScene's fortyWorldX/fortySpeed/fortyLean), parametrized over a
+// per-athlete finish time instead of one fixed course — the finale runs two
+// competitors down the same course simultaneously, each with their own
+// `finishTimesMs` entry, and needs the same "eased burst -> ground-speed
+// -> cadence" pipeline for each independently.
+
+/** World-x position along a single eased sprint burst from `worldStart` to
+ * `worldEnd`, reaching `worldEnd` at `elapsedMs === finishMs` and holding
+ * there beyond it (t clamped to 1). Mirrors DashScene's `fortyWorldX` sprint
+ * leg but takes the finish time as a parameter instead of a fixed course
+ * constant, so each finale competitor can be driven by their own entry from
+ * `finishTimesMs`. */
+export function sprintWorldX(elapsedMs: number, finishMs: number, worldStart: number, worldEnd: number): number {
+  const t = clamp01(elapsedMs / Math.max(1, finishMs));
+  return worldStart + (worldEnd - worldStart) * easeOut(t);
+}
+
+/** d(world)/d(elapsedMs) at the same (elapsedMs, finishMs) as `sprintWorldX`
+ * — the analytic derivative of its easeOut curve (easeOut'(t) =
+ * 2.2·(1-t)^1.2), used to match limb cadence to instantaneous ground speed.
+ * Zero once the runner has reached `worldEnd` (t >= 1). Mirrors DashScene's
+ * `fortySpeed`. */
+export function sprintSpeed(elapsedMs: number, finishMs: number, worldStart: number, worldEnd: number): number {
+  const denom = Math.max(1, finishMs);
+  const t = clamp01(elapsedMs / denom);
+  if (t >= 1) return 0;
+  return ((worldEnd - worldStart) / denom) * 2.2 * Math.pow(1 - t, 1.2);
+}
+
+/** Ground-speed -> run-cycle-seconds mapping shared by any sprint
+ * choreography: faster ground speed means a quicker limb cadence, floored
+ * at `minSec` (the fastest cadence, hit exactly at `peakSpeed`) and capped
+ * at `restSec` (near-zero speed). `peakSpeed` is the caller's own
+ * analytically-known maximum instantaneous speed for this run (e.g.
+ * `sprintSpeed(0, finishMs, worldStart, worldEnd)`), so the mapping is
+ * linear and exact at both ends. */
+export function speedToRunCycleSec(speed: number, peakSpeed: number, minSec = 0.22, restSec = 0.46): number {
+  if (peakSpeed <= 0) return restSec;
+  const k = (restSec - minSec) / peakSpeed;
+  return Math.max(minSec, restSec - speed * k);
+}
+
+/** Forward body lean (degrees, negative = leaning forward) coming out of a
+ * stationary start: `maxDeg` at u=0, easing to upright (0°) by u=1. Shared
+ * by any sprint-start choreography that bursts out of a stance/blocks (the
+ * 40-yard dash's `fortyLean`, the finale's gun start) — `u` should be the
+ * sprint-local progress eased over just the acceleration window, not the
+ * whole race. */
+export function sprintLean(u: number, maxDeg = -22): number {
+  return maxDeg * (1 - easeOut(clamp01(u)));
+}
+
+/** Turn/run progress at which the finale's gun fires and the head-to-head
+ * sprint begins (the hold/"SET…" beat runs from 0 to this fraction of the
+ * `run` phase) — also where Broadcast's whistle-at-the-gun beat triggers
+ * for the champ40 finale, mirroring `SPRINT_START_FRAC` for the dash
+ * drills. */
+export const FINALE_GUN_FRACTION = 0.14;
+
 // --- Waypoint-route choreography ------------------------------------------
 // Shared by any turn that travels a fixed polyline of Point waypoints in a
 // single static frame (the 3-cone L-drill and 5-10-5 shuttle both use these;

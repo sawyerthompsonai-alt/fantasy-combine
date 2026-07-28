@@ -8,7 +8,7 @@ import type { EventResult } from '@/lib/types';
 import { athleteBios } from '@/lib/jokes';
 import { sound } from '@/lib/sound';
 import { useAnimationNow } from '@/lib/useAnimationNow';
-import { STAT_REVEAL_FRACTION, SPRINT_START_FRAC } from './scene/turnChoreo';
+import { STAT_REVEAL_FRACTION, SPRINT_START_FRAC, FINALE_GUN_FRACTION } from './scene/turnChoreo';
 import Field, { type SceneSet } from './scene/Field';
 import ShowOpen from './scene/ShowOpen';
 import BoardInterstitial from './scene/BoardInterstitial';
@@ -103,9 +103,20 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
       state.kind === 'event' && state.phase === 'turn' && event &&
       (event.type === 'forty' || event.type === 'threecone' || event.type === 'shuttle');
 
+    // The finale's head-to-head fires its gun at FINALE_GUN_FRACTION into
+    // the `run` phase (the hold/"SET…" beat before it), same edge-trigger
+    // shape as the dash gun above but champ40-specific.
+    const isFinaleRun = state.kind === 'event' && state.phase === 'run' && event?.type === 'champ40';
+
     if (isDashTurn) {
       const progress = state.phaseDurationMs > 0 ? state.phaseElapsedMs / state.phaseDurationMs : 1;
       if (progress >= SPRINT_START_FRAC && prev.whistledKey !== turnKey) {
+        sound.whistle();
+        prev.whistledKey = turnKey;
+      }
+    } else if (isFinaleRun) {
+      const progress = state.phaseDurationMs > 0 ? state.phaseElapsedMs / state.phaseDurationMs : 1;
+      if (progress >= FINALE_GUN_FRACTION && prev.whistledKey !== turnKey) {
         sound.whistle();
         prev.whistledKey = turnKey;
       }

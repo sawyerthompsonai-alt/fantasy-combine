@@ -4,6 +4,7 @@ import {
   smoothstep, cumulativeDist, easedPathPosition, nearestPlant, routeU,
   benchLockouts, staggeredSpin, doublePumpScaleY, dampedKeyframes,
   dampedHops, periodicPulse,
+  sprintWorldX, sprintSpeed, speedToRunCycleSec, sprintLean, FINALE_GUN_FRACTION,
   type Point,
 } from '@/components/scene/turnChoreo';
 
@@ -373,5 +374,95 @@ describe('periodicPulse', () => {
   it('is always 0 for a non-positive count or fraction', () => {
     expect(periodicPulse(0, 0, 0.1)).toBe(0);
     expect(periodicPulse(0, 4, 0)).toBe(0);
+  });
+});
+
+describe('sprintWorldX', () => {
+  it('starts exactly at worldStart at elapsedMs 0', () => {
+    expect(sprintWorldX(0, 5000, 10, 130)).toBe(10);
+  });
+
+  it('reaches worldEnd exactly at elapsedMs === finishMs', () => {
+    expect(sprintWorldX(5000, 5000, 10, 130)).toBeCloseTo(130);
+  });
+
+  it('holds at worldEnd beyond finishMs (t clamped to 1)', () => {
+    expect(sprintWorldX(9000, 5000, 10, 130)).toBeCloseTo(130);
+  });
+
+  it('a faster (lower finishMs) runner is further along at the same elapsedMs', () => {
+    const fast = sprintWorldX(2000, 4000, 10, 130);
+    const slow = sprintWorldX(2000, 6000, 10, 130);
+    expect(fast).toBeGreaterThan(slow);
+  });
+});
+
+describe('sprintSpeed', () => {
+  it('is at its maximum at elapsedMs 0', () => {
+    const atStart = sprintSpeed(0, 5000, 10, 130);
+    const later = sprintSpeed(2000, 5000, 10, 130);
+    expect(atStart).toBeGreaterThan(later);
+    expect(atStart).toBeGreaterThan(0);
+  });
+
+  it('is 0 once the runner has reached worldEnd', () => {
+    expect(sprintSpeed(5000, 5000, 10, 130)).toBe(0);
+    expect(sprintSpeed(9000, 5000, 10, 130)).toBe(0);
+  });
+
+  it('decreases monotonically across the run', () => {
+    const a = sprintSpeed(500, 5000, 10, 130);
+    const b = sprintSpeed(2500, 5000, 10, 130);
+    const c = sprintSpeed(4500, 5000, 10, 130);
+    expect(a).toBeGreaterThan(b);
+    expect(b).toBeGreaterThan(c);
+  });
+});
+
+describe('speedToRunCycleSec', () => {
+  it('maps peakSpeed exactly to minSec', () => {
+    expect(speedToRunCycleSec(10, 10, 0.22, 0.46)).toBeCloseTo(0.22);
+  });
+
+  it('maps 0 speed exactly to restSec', () => {
+    expect(speedToRunCycleSec(0, 10, 0.22, 0.46)).toBeCloseTo(0.46);
+  });
+
+  it('is linear in between', () => {
+    expect(speedToRunCycleSec(5, 10, 0.22, 0.46)).toBeCloseTo(0.34);
+  });
+
+  it('never goes below minSec even if speed exceeds peakSpeed', () => {
+    expect(speedToRunCycleSec(20, 10, 0.22, 0.46)).toBeCloseTo(0.22);
+  });
+
+  it('falls back to restSec for a non-positive peakSpeed', () => {
+    expect(speedToRunCycleSec(5, 0, 0.22, 0.46)).toBe(0.46);
+  });
+});
+
+describe('sprintLean', () => {
+  it('is at maxDeg at u=0', () => {
+    expect(sprintLean(0, -22)).toBe(-22);
+  });
+
+  it('eases to 0 (upright) by u=1', () => {
+    expect(sprintLean(1)).toBeCloseTo(0);
+  });
+
+  it('clamps u outside [0,1]', () => {
+    expect(sprintLean(-1, -22)).toBe(-22);
+    expect(sprintLean(2)).toBeCloseTo(0);
+  });
+
+  it('defaults maxDeg to -22', () => {
+    expect(sprintLean(0)).toBe(-22);
+  });
+});
+
+describe('FINALE_GUN_FRACTION', () => {
+  it('is a fraction strictly between 0 and 1', () => {
+    expect(FINALE_GUN_FRACTION).toBeGreaterThan(0);
+    expect(FINALE_GUN_FRACTION).toBeLessThan(1);
   });
 });
