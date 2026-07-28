@@ -117,6 +117,16 @@ export default function EventFrame({
       <>
         <div className="flex-1 overflow-y-auto px-3 pb-32 pt-6 sm:px-6">
           {scoreboard ?? (
+            // Task 15 review (Finding 2): this `.row-in` stagger is inert in
+            // production today — Broadcast.tsx always supplies a populated
+            // `scoreboard` (Scoreboard.tsx's ExpandedBoard) for real events'
+            // results phase, so this inline `<ol>` fallback only actually
+            // renders for a caller that doesn't pass one (e.g. a future
+            // integration, or a test). Left as-is rather than wired into
+            // ExpandedBoard: Scoreboard.tsx is outside this task's file
+            // scope, and the real results screen already gets a non-pop
+            // entrance from Broadcast's Step 3 phase crossfade wrapping the
+            // whole results block. Tracked as a follow-up, not a bug.
             <ol className="mx-auto flex max-w-xl flex-col gap-1.5">
               {event.ranking.map((a, i) => {
                 const eliminated = event.eliminated.includes(a);

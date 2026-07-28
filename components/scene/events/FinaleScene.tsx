@@ -24,6 +24,32 @@ const ZOOM_START_FRACTION = 0.68;
 /** Peak zoom multiplier reached at the very end of the run phase. */
 const ZOOM_MAX = 1.22;
 
+/** Run-phase lane vertical anchors (percent of stage, top-anchored — see
+ * `LANE_TOP_PCTS` usage below: the wrapper's `translate(-50%, -100%)` puts
+ * this percentage at the *bottom* of the whole Athlete component, including
+ * its name chip, so the figure extends *upward* from here and needs real
+ * headroom above it. Task 15 review finding: the original 30%/60% pair put
+ * lane 0 only 30% down the stage — nowhere near enough room above for an
+ * ~80px figure + name chip at a short viewport (390x350) before it clips
+ * its head off against the stage's top edge, and the finish-line zoom
+ * (`ZOOM_MAX`, transform-origin near the finish line) makes it worse by
+ * growing the figure further as the run approaches its end. Both values
+ * below sit in the same "near the bottom of the stage" range DashScene's
+ * own 40-yard sprinter already uses safely at this exact viewport
+ * (STANCE_Y=78 there) — verified empirically at progress 0.2/0.5/0.75/0.95,
+ * 390x350, see task-15-report.md. */
+const LANE_TOP_PCTS = [64, 82];
+
+/** Run-phase athlete figure height: `vh`-clamped (small on a short
+ * viewport, the original 80px on a normal one) rather than a fixed px
+ * height — same technique the results screen below already uses for the
+ * champion/runner-up pair, for the same reason (headroom at 390x350),
+ * applied here for extra margin on top of `LANE_TOP_PCTS` once the
+ * finish-line zoom scales the figure up. `sm:`-and-up viewports are tall
+ * enough that this clamps at its 80px ceiling, matching the original size
+ * exactly — desktop is unaffected. */
+const RUN_ATH_SIZE = 'clamp(52px, 20vh, 80px)';
+
 /** World-space track scale (viewport-% units, matches DashScene's 40-yard
  * dash so `cameraX`'s default anchor/track-max line up with the same
  * panning `TrackLines` layer). */
@@ -181,14 +207,14 @@ export default function FinaleScene({
                 <div
                   key={a}
                   className="absolute"
-                  style={{ left: `${vx}%`, top: `${30 + i * 30}%`, transform: 'translate(-50%, -100%)' }}
+                  style={{ left: `${vx}%`, top: `${LANE_TOP_PCTS[i]}%`, transform: 'translate(-50%, -100%)' }}
                 >
                   <div style={{ transform: `rotate(${lean}deg)`, transformOrigin: 'center 80px' }}>
                     <Athlete
                       name={names[a]}
                       color={colors[a]}
                       pose={isHold ? 'stance' : 'run'}
-                      size={80}
+                      size={RUN_ATH_SIZE}
                       facing="right"
                       spotlight
                       runCycleSec={runCycleSec[a]}
