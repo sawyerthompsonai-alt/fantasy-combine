@@ -6,17 +6,16 @@ export function useRoom(id: string) {
   const [room, setRoom] = useState<PublicRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const offsetRef = useRef(0);
-  const viewerRef = useRef<string>('');
-  if (!viewerRef.current && typeof window !== 'undefined') {
-    viewerRef.current = crypto.randomUUID();
-  }
+  const [viewerId] = useState<string>(() =>
+    typeof window === 'undefined' ? '' : crypto.randomUUID()
+  );
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     let stopped = false;
     async function poll() {
       try {
-        const res = await fetch(`/api/rooms/${id}?viewer=${viewerRef.current}`, { cache: 'no-store' });
+        const res = await fetch(`/api/rooms/${id}?viewer=${viewerId}`, { cache: 'no-store' });
         if (res.status === 404) { setError('This room doesn’t exist or has expired.'); return; }
         const body: PublicRoom = await res.json();
         offsetRef.current = body.serverNow - Date.now();
@@ -31,7 +30,7 @@ export function useRoom(id: string) {
     }
     poll();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [id]);
+  }, [id, viewerId]);
 
   const now = useCallback(() => Date.now() + offsetRef.current, []);
   return { room, error, now };
