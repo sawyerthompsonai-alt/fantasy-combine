@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import DraftBoard from './DraftBoard';
 import { seededShuffle } from '@/lib/shuffle';
 import type { PublicRoom } from '@/lib/rooms';
@@ -40,9 +41,13 @@ export default function FinalBoard({ room }: { room: PublicRoom }) {
     <main className="mx-auto max-w-4xl px-6 py-12">
       <p className="display text-sm text-[var(--accent)]">Final results</p>
       <h1 className="display mb-6 text-4xl">The draft order</h1>
+      <Link href="?replay=1"
+        className="display mb-6 flex w-full items-center justify-center rounded bg-[var(--accent)] py-4 text-lg text-black hover:brightness-110">
+        ▶ Replay the broadcast
+      </Link>
       <DraftBoard names={room.names} colors={room.colors} locks={locks} total={room.names.length} />
       <button onClick={() => navigator.clipboard.writeText(resultsText(room))}
-        className="display mt-6 rounded bg-[var(--accent)] px-6 py-3 text-black">
+        className="display mt-6 rounded border border-[var(--line)] px-6 py-3 text-[var(--text)]">
         Copy for the group chat
       </button>
       <div className="mt-8 rounded border border-[var(--line)] p-4 text-sm text-[var(--muted)]">

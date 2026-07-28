@@ -2,10 +2,24 @@
 import { use, useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRoom } from '@/lib/useRoom';
+import { buildTimeline } from '@/lib/timeline';
+import type { PublicRoom } from '@/lib/rooms';
+
+/** "Broadcast in progress — about N min remaining", derived from the
+ * server-corrected clock (`now`) and the room's own timeline — falls back to
+ * a static estimate before outcomes/startTime exist. */
+function remainingLabel(room: PublicRoom, now: () => number): string {
+  if (!room.outcomes || room.startTime === undefined) return '~7 minute broadcast';
+  const { totalMs } = buildTimeline(room.outcomes);
+  const remainingMs = totalMs - (now() - room.startTime);
+  if (remainingMs <= 30_000) return 'wrapping up any moment';
+  const mins = Math.max(1, Math.round(remainingMs / 60_000));
+  return `about ${mins} min remaining`;
+}
 
 function Control({ id }: { id: string }) {
   const params = useSearchParams();
-  const { room, error } = useRoom(id);
+  const { room, error, now } = useRoom(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenResolved, setTokenResolved] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -65,7 +79,9 @@ function Control({ id }: { id: string }) {
       {room.status !== 'lobby' && (
         <div className="rounded border border-[var(--line)] p-4">
           <p className="mb-3 text-[var(--muted)]">
-            {room.status === 'revealing' ? 'Broadcast in progress — watch it on the watch link.' : 'Reveal complete.'}
+            {room.status === 'revealing'
+              ? `Broadcast in progress — ${remainingLabel(room, now)}. Watch it on the link below.`
+              : 'Reveal complete — the watch link now shows final results, with a ▶ Replay button so anyone can rewatch the broadcast anytime.'}
           </p>
           {!confirmReset ? (
             <button onClick={() => setConfirmReset(true)} className="rounded border border-red-400 px-4 py-2 text-red-400">

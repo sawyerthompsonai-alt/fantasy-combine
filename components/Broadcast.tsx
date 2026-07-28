@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { PublicRoom } from '@/lib/rooms';
 import { lockedPicks, stateAt, type EventPhase } from '@/lib/timeline';
 import type { EventResult } from '@/lib/types';
 import { sound } from '@/lib/sound';
+import { STAT_REVEAL_FRACTION } from './scene/turnChoreo';
 import Field from './scene/Field';
 import BoardInterstitial from './scene/BoardInterstitial';
 import DashScene from './scene/events/DashScene';
@@ -33,28 +35,65 @@ function EventScene(props: EventSceneProps) {
   }
 }
 
-export default function Broadcast({ room, now }: { room: PublicRoom; now: () => number }) {
+export default function Broadcast({ room, now, replay = false }: { room: PublicRoom; now: () => number; replay?: boolean }) {
   const [, tick] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
+  // Replay's local clock: elapsed runs from 0 as of mount, ignoring
+  // startTime/serverNow entirely. `Date.now()` is only ever read inside the
+  // interval effect below (never during render) to keep the component pure;
+  // `mountTime`/`replayNowMs` are the render-safe snapshots of it.
+  const [mountTime] = useState(() => Date.now());
+  const [replayNowMs, setReplayNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => tick(x => x + 1), 100);
+    const t = setInterval(() => {
+      tick(x => x + 1);
+      setReplayNowMs(Date.now());
+    }, 100);
     return () => clearInterval(t);
   }, []);
 
   const outcomes = room.outcomes!;
-  const elapsed = now() - (room.startTime ?? now());
+  const elapsed = replay ? replayNowMs - mountTime : now() - (room.startTime ?? now());
   const state = stateAt(outcomes, elapsed);
   const locks = lockedPicks(outcomes, elapsed);
   const allLocked = locks.length === room.names.length;
 
-  const prevRef = useRef({ phaseKey: '', locks: 0 });
+  const prevRef = useRef({ turnKey: '', poppedKey: '', locks: 0, finalFired: false });
   useEffect(() => {
     const prev = prevRef.current;
-    const phaseKey = state.kind === 'event' ? `${state.eventIndex}:${state.phase}:${state.turnIndex ?? ''}` : state.kind;
-    if (phaseKey !== prev.phaseKey && state.kind === 'event' && (state.phase === 'run' || state.phase === 'turn')) sound.whistle();
-    if (locks.length > prev.locks) sound.lock();
-    if (locks.length === room.names.length && prev.locks < room.names.length) sound.horn();
-    prevRef.current = { phaseKey, locks: locks.length };
+    const turnKey = state.kind === 'event' ? `${state.eventIndex}:${state.phase}:${state.turnIndex ?? ''}` : state.kind;
+
+    // Whistle at each turn/run start.
+    if (turnKey !== prev.turnKey && state.kind === 'event' && (state.phase === 'run' || state.phase === 'turn')) {
+      sound.whistle();
+    }
+
+    // Stat "pop" once a turn crosses the shared reveal fraction (matches the
+    // per-scene countUpStat lock point) — fires once per turn.
+    if (state.kind === 'event' && state.phase === 'turn') {
+      const progress = state.phaseDurationMs > 0 ? state.phaseElapsedMs / state.phaseDurationMs : 1;
+      if (progress >= STAT_REVEAL_FRACTION && prev.poppedKey !== turnKey) {
+        sound.pop();
+        prev.poppedKey = turnKey;
+      }
+    }
+
+    // Elimination horn at that event's lock; a subtler chime for any other
+    // pick lock (the finale's pick-#2 lock mid-results).
+    if (locks.length > prev.locks) {
+      if (state.kind === 'event' && state.phase === 'elimination') sound.horn();
+      else sound.lock();
+    }
+
+    // Finale crowd swell + the existing confetti horn once the broadcast
+    // resolves to the champion screen.
+    if (state.kind === 'final' && !prev.finalFired) {
+      sound.swell();
+      sound.horn();
+      prev.finalFired = true;
+    }
+
+    prevRef.current = { turnKey, poppedKey: prev.poppedKey, locks: locks.length, finalFired: prev.finalFired };
   });
 
   const event = state.kind === 'event' ? outcomes.events[state.eventIndex] : undefined;
@@ -110,10 +149,26 @@ export default function Broadcast({ room, now }: { room: PublicRoom; now: () => 
       )}
 
       <header className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-3 pt-[max(0.6rem,env(safe-area-inset-top))] sm:px-5">
-        <span className="live-dot display flex items-center gap-1.5 text-[11px] text-[var(--accent)] sm:text-xs">
-          <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
-          LIVE
-        </span>
+        <div className="flex items-center gap-2">
+          {replay ? (
+            <span className="display flex items-center gap-1.5 rounded-full border border-[var(--accent)]/50 bg-[var(--bg)]/70 px-3 py-1.5 text-[11px] text-[var(--accent)] backdrop-blur-sm sm:text-xs">
+              <span aria-hidden>▶</span> REPLAY
+            </span>
+          ) : (
+            <span className="live-dot display flex items-center gap-1.5 text-[11px] text-[var(--accent)] sm:text-xs">
+              <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+              LIVE
+            </span>
+          )}
+          {replay && (
+            <Link
+              href={`/r/${room.id}`}
+              className="display text-[10px] text-[var(--muted)] underline underline-offset-2 sm:text-xs"
+            >
+              Exit replay
+            </Link>
+          )}
+        </div>
         <button
           onClick={() => {
             if (soundOn) sound.disable();
