@@ -270,3 +270,27 @@ export function routeJogOffOffset(progress: number, dirX: number, dirY: number, 
   const u = easeOut(clamp01((progress - jogOff[0]) / (jogOff[1] - jogOff[0])));
   return { dx: dirX * amount * u, dy: dirY * amount * u };
 }
+
+// --- Bench press ------------------------------------------------------
+
+/** Lockout fractions (0..1 of the perform window) for R reps: even pacing,
+ * except the last two reps take 1.5x and 2x as long as a normal rep (the
+ * struggle) — each rep's weight is its share of the perform window, and the
+ * lockout fractions are the prefix sums of those weights normalized to 1.
+ * Pure arithmetic — no timers, no randomness, so the same rep count always
+ * produces the same lockout schedule. */
+export function benchLockouts(reps: number): number[] {
+  if (reps <= 0) return [];
+  const weights: number[] = [];
+  for (let i = 0; i < reps; i++) {
+    if (i === reps - 1) weights.push(2);
+    else if (i === reps - 2) weights.push(1.5);
+    else weights.push(1);
+  }
+  const total = weights.reduce((a, b) => a + b, 0);
+  let sum = 0;
+  return weights.map(w => {
+    sum += w;
+    return sum / total;
+  });
+}

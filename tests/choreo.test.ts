@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DASH_BEATS, SPRINT_START_FRAC, cameraX, STAT_REVEAL_FRACTION,
   smoothstep, cumulativeDist, easedPathPosition, nearestPlant, routeU,
+  benchLockouts,
   type Point,
 } from '@/components/scene/turnChoreo';
 
@@ -188,5 +189,43 @@ describe('routeU', () => {
   it('clamps above the window to 1', () => {
     expect(routeU(1)).toBe(1);
     expect(routeU(DASH_BEATS.official + 0.5)).toBe(1);
+  });
+});
+
+describe('benchLockouts', () => {
+  it('returns an empty schedule for 0 reps', () => {
+    expect(benchLockouts(0)).toEqual([]);
+  });
+
+  it('returns one entry per rep', () => {
+    for (const reps of [1, 2, 3, 5, 10]) {
+      expect(benchLockouts(reps)).toHaveLength(reps);
+    }
+  });
+
+  it('is strictly increasing', () => {
+    const fracs = benchLockouts(6);
+    for (let i = 1; i < fracs.length; i++) {
+      expect(fracs[i]).toBeGreaterThan(fracs[i - 1]);
+    }
+  });
+
+  it('ends exactly at 1', () => {
+    for (const reps of [1, 2, 3, 8]) {
+      const fracs = benchLockouts(reps);
+      expect(fracs[fracs.length - 1]).toBe(1);
+    }
+  });
+
+  it('struggles on the last two reps: their gap exceeds a normal rep gap, and the very last exceeds the second-to-last', () => {
+    for (const reps of [3, 4, 5, 8]) {
+      const fracs = benchLockouts(reps);
+      const gap = (i: number) => fracs[i] - (i === 0 ? 0 : fracs[i - 1]);
+      const first = gap(0);
+      const secondLast = gap(reps - 2);
+      const last = gap(reps - 1);
+      expect(last).toBeGreaterThan(secondLast);
+      expect(secondLast).toBeGreaterThan(first);
+    }
   });
 });
