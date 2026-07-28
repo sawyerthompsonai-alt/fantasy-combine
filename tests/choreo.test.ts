@@ -395,6 +395,13 @@ describe('sprintWorldX', () => {
     const slow = sprintWorldX(2000, 6000, 10, 130);
     expect(fast).toBeGreaterThan(slow);
   });
+
+  it('pins the eased (not linear) curve at the midpoint — easeOut(0.5) ≈ 0.7824, not 0.5', () => {
+    // A linear t would give worldStart + range*0.5 = 70; the real easeOut
+    // curve front-loads progress, giving ~103.88 instead. This distinguishes
+    // an easeOut(t) implementation from a `t` (linear) regression.
+    expect(sprintWorldX(2500, 5000, 10, 130)).toBeCloseTo(103.88, 1);
+  });
 });
 
 describe('sprintSpeed', () => {
@@ -416,6 +423,20 @@ describe('sprintSpeed', () => {
     const c = sprintSpeed(4500, 5000, 10, 130);
     expect(a).toBeGreaterThan(b);
     expect(b).toBeGreaterThan(c);
+  });
+
+  it('pins the 2.2 derivative constant at elapsedMs 0 — (range/finishMs)*2.2, not *1.0', () => {
+    // At t=0, (1-t)^exponent is 1 regardless of the exponent, isolating the
+    // leading 2.2 scale factor: (120/5000)*2.2 = 0.0528 exactly. A
+    // regression to the wrong constant (e.g. 1.0) would give 0.024 instead.
+    expect(sprintSpeed(0, 5000, 10, 130)).toBeCloseTo(0.0528, 4);
+  });
+
+  it('pins the eased (not linear) falloff at the midpoint — (1-0.5)^1.2 ≈ 0.4353, not 0.5', () => {
+    // At t=0.5, elapsedMs=2500 of finishMs=5000: (120/5000)*2.2*(0.5^1.2)
+    // ≈ 0.02298. A linear (uneased) falloff would give (120/5000)*2.2*0.5
+    // = 0.0264 instead.
+    expect(sprintSpeed(2500, 5000, 10, 130)).toBeCloseTo(0.02298, 3);
   });
 });
 
@@ -453,6 +474,12 @@ describe('sprintLean', () => {
   it('clamps u outside [0,1]', () => {
     expect(sprintLean(-1, -22)).toBe(-22);
     expect(sprintLean(2)).toBeCloseTo(0);
+  });
+
+  it('pins the eased (not linear) curve at the midpoint — maxDeg*(1-easeOut(0.5)) ≈ -4.79, not -11', () => {
+    // A linear (1-u) would give -22*0.5 = -11; the real easeOut curve
+    // front-loads the ease-back-to-upright motion, giving ~-4.79 instead.
+    expect(sprintLean(0.5, -22)).toBeCloseTo(-4.79, 1);
   });
 
   it('defaults maxDeg to -22', () => {

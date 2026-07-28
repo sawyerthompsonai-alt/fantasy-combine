@@ -1,4 +1,5 @@
 'use client';
+import { useMemo } from 'react';
 import Athlete from '../Athlete';
 import LowerThird from '../LowerThird';
 import TrackLines from '../sets/TrackLines';
@@ -57,6 +58,15 @@ export default function FinaleScene({
   const lanes = [...event.competitors].sort((a, b) => a - b);
   const champion = event.ranking[0];
   const runnerUp = event.ranking[1];
+  // Confetti keys its one-time piece generation off this array's identity
+  // (see components/Confetti.tsx's `useEffect(..., [colors])`) — FinaleScene
+  // re-renders every animation frame via the broadcast's rAF clock, so a
+  // fresh `[colors[champion]]` literal on every render would re-fire that
+  // effect every frame and regenerate 120 random pieces continuously,
+  // restarting them from the top instead of letting them fall. Memoized so
+  // the array is only a new reference when the champion or palette actually
+  // changes.
+  const championConfettiColors = useMemo(() => [colors[champion]], [colors, champion]);
 
   if (phase === 'intro') {
     return (
@@ -219,25 +229,37 @@ export default function FinaleScene({
 
   return (
     <>
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 pb-28 pt-6 text-center">
+      {/* This whole block sits in a box whose height is pinned to the full
+          stage (Field's `absolute inset-0` children wrapper) — content
+          taller than that box overflows past its bottom edge, behind the
+          fixed LowerThird bar (the Task 13 review's Finding 3). At a short
+          viewport (390x350) with the app's 24-char name limit, the original
+          fixed pt-6/gap-6/pb-28 + text-2xl/xl/lg + 110px/90px athlete
+          figures added up to more than the box's height. Two changes fix
+          it without any JS measurement: the athlete figures use a `vh`-
+          clamped size (small on a short viewport, the original fixed px on
+          a normal one) instead of a fixed px height, and the base (mobile)
+          padding/gap/text sizes are trimmed — `sm:` sizes are unchanged so
+          desktop is unaffected. */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 pb-16 pt-2 text-center sm:gap-6 sm:pb-28 sm:pt-6">
         {/* Only the athlete pair scales — the message text below stays at
             its natural size so a long name + long copy never gets pushed
             past the viewport edge by an off-center transform-origin (a
             zoom anchored on the champion, who sits left-of-center in this
             row). */}
         <div
-          className="flex items-center gap-8 sm:gap-14"
+          className="flex items-center gap-4 sm:gap-14"
           style={{ transform: `scale(${resultsZoom})`, transformOrigin: '35% center' }}
         >
-          <Athlete name={names[champion]} color={colors[champion]} pose="celebrate" size={110} spotlight />
-          <Athlete name={names[runnerUp]} color={colors[runnerUp]} pose="idle" size={90} dimmed={pick2Locked} />
+          <Athlete name={names[champion]} color={colors[champion]} pose="celebrate" size="clamp(56px, 22vh, 110px)" spotlight />
+          <Athlete name={names[runnerUp]} color={colors[runnerUp]} pose="idle" size="clamp(46px, 18vh, 90px)" dimmed={pick2Locked} />
         </div>
         {pick1Locked ? (
-          <p className="display text-2xl text-[var(--accent)] sm:text-4xl">🏆 {names[champion]} locks the #1 pick!</p>
+          <p className="display text-base text-[var(--accent)] sm:text-4xl">🏆 {names[champion]} locks the #1 pick!</p>
         ) : pick2Locked ? (
-          <p className="display text-xl text-[var(--text)] sm:text-2xl">{names[runnerUp]} locks pick #2…</p>
+          <p className="display text-sm text-[var(--text)] sm:text-2xl">{names[runnerUp]} locks pick #2…</p>
         ) : (
-          <p className="display text-lg text-[var(--muted)] sm:text-xl">tabulating the finish…</p>
+          <p className="display text-sm text-[var(--muted)] sm:text-xl">tabulating the finish…</p>
         )}
       </div>
       <LowerThird
@@ -252,7 +274,7 @@ export default function FinaleScene({
             : `${meta.label} · RESULTS`
         }
       />
-      {pick1Locked && <Confetti colors={[colors[champion]]} />}
+      {pick1Locked && <Confetti colors={championConfettiColors} />}
     </>
   );
 }
