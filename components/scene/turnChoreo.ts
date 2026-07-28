@@ -110,3 +110,32 @@ export function facingFromDx(dx: number, fallback: 'left' | 'right' = 'right'): 
 export function strainEase(u: number): number {
   return Math.sqrt(clamp01(u));
 }
+
+/** Turn-phase beat boundaries for the 40-yard dash, as fractions of overall
+ * turn progress: walk in from the sideline, hold the 3-point stance, the
+ * gun/sprint burst, running through the finish, the OFFICIAL time reveal,
+ * and the jog-off. `official` intentionally equals `STAT_REVEAL_FRACTION` —
+ * the clock freezes at the same instant the shared stat-reveal beat fires,
+ * so DashScene's existing countUpStat/lock wiring lines up for free. */
+export const DASH_BEATS = {
+  walkIn: [0, 0.12],
+  stance: [0.12, 0.28],
+  sprint: [0.28, 0.60],
+  through: [0.60, 0.70],
+  official: 0.70,
+  jogOff: [0.86, 1],
+} as const;
+
+/** Turn progress at which the gun fires and the sprint begins — also where
+ * Broadcast's whistle-at-sprint-start beat triggers for dash-type events. */
+export const SPRINT_START_FRAC = DASH_BEATS.sprint[0];
+
+/** Camera x (viewport %) that keeps the runner ~38% from the left once
+ * they've traveled past that anchor point; clamped to the track bounds
+ * [0, 200] so the pan never runs past the edges of the panning TrackLines
+ * layer. Below the anchor the camera holds at 0 — the runner visibly
+ * accelerates away from a static camera before the pan kicks in, matching
+ * real combine coverage. */
+export function cameraX(runnerWorldPct: number, viewportAnchor = 38, trackMax = 200): number {
+  return Math.min(trackMax, Math.max(0, runnerWorldPct - viewportAnchor));
+}

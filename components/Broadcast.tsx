@@ -8,7 +8,7 @@ import type { EventResult } from '@/lib/types';
 import { athleteBios } from '@/lib/jokes';
 import { sound } from '@/lib/sound';
 import { useAnimationNow } from '@/lib/useAnimationNow';
-import { STAT_REVEAL_FRACTION } from './scene/turnChoreo';
+import { STAT_REVEAL_FRACTION, SPRINT_START_FRAC } from './scene/turnChoreo';
 import Field, { type SceneSet } from './scene/Field';
 import ShowOpen from './scene/ShowOpen';
 import BoardInterstitial from './scene/BoardInterstitial';
@@ -85,7 +85,9 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   // across renders (bios is passed down as a prop).
   const bios = useMemo(() => athleteBios(room.seedHash, room.names.length), [room.seedHash, room.names.length]);
 
-  const prevRef = useRef({ turnKey: '', poppedKey: '', locks: 0, finalFired: false });
+  const event = state.kind === 'event' ? outcomes.events[state.eventIndex] : undefined;
+
+  const prevRef = useRef({ turnKey: '', poppedKey: '', whistledKey: '', locks: 0, finalFired: false });
   useEffect(() => {
     const prev = prevRef.current;
     const turnKey =
@@ -93,8 +95,21 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
       : state.kind === 'open' && state.phase === 'walkup' ? `open:walkup:${state.walkupIndex}`
       : state.kind;
 
-    // Whistle at each turn/run start.
-    if (turnKey !== prev.turnKey && state.kind === 'event' && (state.phase === 'run' || state.phase === 'turn')) {
+    // Dash-type turns (forty/threecone/shuttle) fire the whistle at the gun
+    // — turn progress crossing SPRINT_START_FRAC — instead of at turn start,
+    // so it lands on DashScene's stance-hold beat instead of the walk-in.
+    // Every other turn/run-phase event keeps the original turn-start cue.
+    const isDashTurn =
+      state.kind === 'event' && state.phase === 'turn' && event &&
+      (event.type === 'forty' || event.type === 'threecone' || event.type === 'shuttle');
+
+    if (isDashTurn) {
+      const progress = state.phaseDurationMs > 0 ? state.phaseElapsedMs / state.phaseDurationMs : 1;
+      if (progress >= SPRINT_START_FRAC && prev.whistledKey !== turnKey) {
+        sound.whistle();
+        prev.whistledKey = turnKey;
+      }
+    } else if (turnKey !== prev.turnKey && state.kind === 'event' && (state.phase === 'run' || state.phase === 'turn')) {
       sound.whistle();
     }
 
@@ -131,10 +146,11 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
       prev.finalFired = true;
     }
 
-    prevRef.current = { turnKey, poppedKey: prev.poppedKey, locks: locks.length, finalFired: prev.finalFired };
+    prevRef.current = {
+      turnKey, poppedKey: prev.poppedKey, whistledKey: prev.whistledKey, locks: locks.length, finalFired: prev.finalFired,
+    };
   });
 
-  const event = state.kind === 'event' ? outcomes.events[state.eventIndex] : undefined;
   const showBoardInterstitial =
     state.kind === 'event' && state.phase === 'elimination' && state.phaseElapsedMs / state.phaseDurationMs >= 0.5;
   const justLocked = event?.picksLocked.length ? event.picksLocked[event.picksLocked.length - 1].pick : undefined;
