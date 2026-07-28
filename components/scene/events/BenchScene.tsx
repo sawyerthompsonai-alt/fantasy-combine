@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useRef, useState } from 'react';
 import Athlete, { type AthletePose } from '../Athlete';
 import LowerThird from '../LowerThird';
 import EventFrame from './EventFrame';
@@ -89,6 +90,124 @@ function BenchPlate({ cx }: { cx: number }) {
   );
 }
 
+/** Furniture/athlete/barbell rig, scaled to fit the available stage —
+ * CSS-only, no SVG/foreignObject (WebKit has a documented history of
+ * foreignObject quirks with absolutely-positioned HTML children and with
+ * reflow on viewport changes, exactly what this rig would stress on iOS
+ * Safari's URL-bar show/hide and orientation changes; this is a party app
+ * people watch on phones, so that risk isn't worth taking).
+ *
+ * Two nested boxes:
+ *  - the "sizer" — a plain div sized via `aspect-ratio` + a container-query
+ *    `width: min(native, 100cqw, height-budget-converted-to-width)`, i.e.
+ *    the standard object-fit:contain recipe for replaced elements, applied
+ *    here to reserve the correct on-screen footprint. Never exceeds the
+ *    native BOX_W — desktop, where the stage is much bigger than that,
+ *    renders unscaled and pixel-identical to before.
+ *  - the "rig" — position:absolute inset-0 inside the sizer (so its fixed
+ *    300x172 size can never feed back into the sizer's own sizing — no
+ *    circular growth), holding every child completely unchanged from the
+ *    original fixed-px implementation, `transform: scale(...)`-ed down by
+ *    the ratio between the sizer's *actual measured* rendered width and
+ *    BOX_W. That ratio can't be expressed in pure CSS without dividing two
+ *    same-unit lengths in calc() — a feature not reliably available in
+ *    Safari — so it's the one piece measured in JS (ResizeObserver, watching
+ *    only the sizer's own box, not the viewport), same technique every
+ *    other "scale an SVG/canvas/video to fit" component uses. `transform:
+ *    scale` is layout-inert (doesn't participate in progress-driven motion,
+ *    doesn't animate/transition) — it only ever changes in response to the
+ *    stage resizing, never as a function of `progress`. */
+function BenchApparatus(props: {
+  spotterX: number;
+  centerX: number; centerY: number; rotationDeg: number; pose: AthletePose; facing: 'left' | 'right';
+  name: string; color: string;
+  barX: number; barY: number; flexDeg: number; shakeX: number;
+}) {
+  const { spotterX, centerX, centerY, rotationDeg, pose, facing, name, color, barX, barY, flexDeg, shakeX } = props;
+  const sizerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = sizerRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.getBoundingClientRect().width;
+      setScale(w > 0 ? w / BOX_W : 1);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={sizerRef}
+      className="relative"
+      style={{
+        width: `min(${BOX_W}px, 100cqw, calc(100cqh * ${BOX_W} / ${BOX_H}))`,
+        aspectRatio: `${BOX_W} / ${BOX_H}`,
+      }}
+    >
+      <div
+        className="absolute left-0 top-0"
+        style={{ width: BOX_W, height: BOX_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+      >
+        {/* rubber floor is WeightRoom's job — this box only holds furniture */}
+
+        {/* bench rack posts (head end) */}
+        <div
+          className="absolute rounded-sm bg-[#2b2f38]"
+          style={{ left: RACK_X1, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
+        />
+        <div
+          className="absolute rounded-sm bg-[#2b2f38]"
+          style={{ left: RACK_X2, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
+        />
+        <div
+          className="absolute rounded-sm bg-[#3a3f4a]"
+          style={{ left: RACK_X1 - 2, top: RACK_TOP_Y + 4, width: 20, height: 5 }}
+        />
+
+        {/* spotter, standing behind the bench head */}
+        <div className="absolute -translate-x-1/2" style={{ left: spotterX, bottom: BOX_H - FLOOR_Y }}>
+          <Athlete name="Spotter" color="#5a6170" pose="idle" size={64} dimmed showName={false} />
+        </div>
+
+        {/* bench pad + legs */}
+        <div
+          className="absolute rounded-md bg-[#23262d] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+          style={{ left: HEAD_X, top: BENCH_TOP_Y, width: FOOT_X - HEAD_X, height: BENCH_THICK }}
+        />
+        <div className="absolute bg-[#15171c]" style={{ left: HEAD_X + 8, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
+        <div className="absolute bg-[#15171c]" style={{ left: FOOT_X - 14, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
+
+        {/* athlete: rotates from standing (walk-in) to lying flat on the bench */}
+        <div
+          className="absolute"
+          style={{ left: centerX, top: centerY, transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)` }}
+        >
+          <Athlete name={name} color={color} pose={pose} size={ATH_SIZE} facing={facing} showName={false} spotlight />
+        </div>
+
+        {/* barbell: bar + two 45-plate pairs */}
+        <svg
+          className="absolute overflow-visible"
+          style={{
+            left: barX, top: barY, width: 160, height: 40,
+            transform: `translate(-50%, -50%) rotate(${flexDeg}deg) translateX(${shakeX}px)`,
+          }}
+          viewBox="0 0 160 40"
+        >
+          <line x1="14" y1="20" x2="146" y2="20" stroke="#8a93a3" strokeWidth="4" strokeLinecap="round" />
+          <BenchPlate cx={14} />
+          <BenchPlate cx={146} />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export default function BenchScene(props: {
   event: EventResult; names: string[]; colors: string[]; phase: EventPhase;
   phaseElapsedMs: number; phaseDurationMs: number; turnIndex?: number; athlete?: number;
@@ -172,95 +291,28 @@ export default function BenchScene(props: {
 
         return (
           <>
-            <div className="relative min-h-0 flex-1 px-4 pb-28 pt-6" style={{ opacity }}>
+            <div
+              className="relative min-h-0 flex-1 px-4 pb-28 pt-6"
+              style={{ opacity, containerType: 'size' }}
+            >
               <p className="display absolute left-4 top-4 text-[10px] text-[var(--muted)] sm:text-xs">
                 LANE {turnIndex + 1} / {lanes.length}
               </p>
 
-              {/* Local BOX_W x BOX_H coordinate system, same as before, but
-                  rendered through an SVG viewBox instead of a fixed-px div.
-                  The svg keeps its intrinsic 300x172 size (CSS width/height
-                  left `auto`, same as an <img>) capped by max-width/
-                  max-height: 100% — so at desktop, where the stage is much
-                  bigger than 300x172, nothing scales up and the appearance
-                  is pixel-identical to the old fixed box; only when the
-                  available stage is shorter than BOX_H or narrower than
-                  BOX_W (short/landscape viewports, resized desktop windows)
-                  does it shrink, proportionally, via the same intrinsic-
-                  aspect-ratio algorithm browsers use for replaced elements
-                  like <img>. `min-h-0` on this flex-1 container (and
-                  min-w-0 below) opt out of flexbox's default "never shrink
-                  below content's intrinsic size" behavior, which would
-                  otherwise force this box to grow past the available stage
-                  to fit the svg's un-shrunk 300x172 instead of the other
-                  way around. None of the geometry math below changes. */}
+              {/* `containerType: 'size'` above turns this div into a container-
+                  query container sized purely by flex-1 (contain:size — its
+                  own size is never influenced by BenchApparatus's content),
+                  which BenchApparatus's sizer box below queries via cqw/cqh
+                  to shrink-to-fit without ever exceeding native size. Plain
+                  CSS + a JS-measured `transform: scale()` — no SVG/
+                  foreignObject. See BenchApparatus for the full rationale. */}
               <div className="flex h-full min-w-0 items-center justify-center">
-                <svg
-                  width={BOX_W}
-                  height={BOX_H}
-                  viewBox={`0 0 ${BOX_W} ${BOX_H}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  style={{ maxWidth: '100%', maxHeight: '100%' }}
-                >
-                <foreignObject x={0} y={0} width={BOX_W} height={BOX_H}>
-                  <div
-                    // React automatically renders foreignObject's children in
-                    // the HTML namespace (no xmlns attribute needed here).
-                    style={{ position: 'relative', width: BOX_W, height: BOX_H }}
-                  >
-                    {/* rubber floor is WeightRoom's job — this box only holds furniture */}
-
-                    {/* bench rack posts (head end) */}
-                    <div
-                      className="absolute rounded-sm bg-[#2b2f38]"
-                      style={{ left: RACK_X1, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
-                    />
-                    <div
-                      className="absolute rounded-sm bg-[#2b2f38]"
-                      style={{ left: RACK_X2, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
-                    />
-                    <div
-                      className="absolute rounded-sm bg-[#3a3f4a]"
-                      style={{ left: RACK_X1 - 2, top: RACK_TOP_Y + 4, width: 20, height: 5 }}
-                    />
-
-                    {/* spotter, standing behind the bench head */}
-                    <div className="absolute -translate-x-1/2" style={{ left: spotterX, bottom: BOX_H - FLOOR_Y }}>
-                      <Athlete name="Spotter" color="#5a6170" pose="idle" size={64} dimmed showName={false} />
-                    </div>
-
-                    {/* bench pad + legs */}
-                    <div
-                      className="absolute rounded-md bg-[#23262d] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-                      style={{ left: HEAD_X, top: BENCH_TOP_Y, width: FOOT_X - HEAD_X, height: BENCH_THICK }}
-                    />
-                    <div className="absolute bg-[#15171c]" style={{ left: HEAD_X + 8, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
-                    <div className="absolute bg-[#15171c]" style={{ left: FOOT_X - 14, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
-
-                    {/* athlete: rotates from standing (walk-in) to lying flat on the bench */}
-                    <div
-                      className="absolute"
-                      style={{ left: centerX, top: centerY, transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)` }}
-                    >
-                      <Athlete name={names[a]} color={colors[a]} pose={pose} size={ATH_SIZE} facing={facing} showName={false} spotlight />
-                    </div>
-
-                    {/* barbell: bar + two 45-plate pairs */}
-                    <svg
-                      className="absolute overflow-visible"
-                      style={{
-                        left: barX, top: barY, width: 160, height: 40,
-                        transform: `translate(-50%, -50%) rotate(${flexDeg}deg) translateX(${shakeX}px)`,
-                      }}
-                      viewBox="0 0 160 40"
-                    >
-                      <line x1="14" y1="20" x2="146" y2="20" stroke="#8a93a3" strokeWidth="4" strokeLinecap="round" />
-                      <BenchPlate cx={14} />
-                      <BenchPlate cx={146} />
-                    </svg>
-                  </div>
-                </foreignObject>
-                </svg>
+                <BenchApparatus
+                  spotterX={spotterX}
+                  centerX={centerX} centerY={centerY} rotationDeg={rotationDeg} pose={pose} facing={facing}
+                  name={names[a]} color={colors[a]}
+                  barX={barX} barY={barY} flexDeg={flexDeg} shakeX={shakeX}
+                />
               </div>
 
               <p
