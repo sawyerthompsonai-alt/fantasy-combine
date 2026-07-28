@@ -47,6 +47,12 @@ body {
     linear-gradient(180deg, #05070a 0%, #0a0d13 78%, transparent 100%);
 }
 
+/* Indoor/sideline sets swap the outdoor crowd noise for a dark truss/wall
+ * header — same footprint as .crowd-band, no crowd texture. */
+.wall-band {
+  background: linear-gradient(180deg, #050608 0%, #0c0f15 72%, transparent 100%);
+}
+
 .live-dot span {
   animation: live-pulse 1.6s ease-in-out infinite;
 }

@@ -2,12 +2,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { PublicRoom } from '@/lib/rooms';
-import { lockedPicks, stateAt, type EventPhase } from '@/lib/timeline';
+import { lockedPicks, stateAt, type BroadcastState, type EventPhase } from '@/lib/timeline';
 import type { EventResult } from '@/lib/types';
 import { sound } from '@/lib/sound';
 import { useAnimationNow } from '@/lib/useAnimationNow';
 import { STAT_REVEAL_FRACTION } from './scene/turnChoreo';
-import Field from './scene/Field';
+import Field, { type SceneSet } from './scene/Field';
 import BoardInterstitial from './scene/BoardInterstitial';
 import DashScene from './scene/events/DashScene';
 import JumpScene from './scene/events/JumpScene';
@@ -33,6 +33,24 @@ function EventScene(props: EventSceneProps) {
     case 'broad': return <JumpScene {...props} />;
     case 'gauntlet': return <GauntletScene {...props} />;
     default: return <DashScene {...props} />; // forty, threecone, shuttle
+  }
+}
+
+/** Picks the Field backdrop for the current broadcast state: each event
+ * type gets its own set (bench → weight room, vertical/broad → jump
+ * station, gauntlet → sideline); the sprint/finale events run on the
+ * panning track set only while athletes are actually moving (`turn`/`run`)
+ * and fall back to the static field otherwise; open/pregame/final always
+ * use the static field. */
+function setFor(state: BroadcastState, event: EventResult | undefined): SceneSet {
+  if (state.kind !== 'event' || !event) return 'field';
+  switch (event.type) {
+    case 'bench': return 'weightroom';
+    case 'vertical':
+    case 'broad': return 'jumpstation';
+    case 'gauntlet': return 'sideline';
+    default: // forty, threecone, shuttle, champ40
+      return state.phase === 'turn' || state.phase === 'run' ? 'track' : 'field';
   }
 }
 
@@ -97,7 +115,7 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
 
   return (
     <div className="relative min-h-dvh w-full overflow-x-hidden">
-      <Field>
+      <Field set={setFor(state, event)}>
         {state.kind === 'pregame' && (
           <div className="flex flex-1 items-center justify-center px-4">
             <p className="display text-xl text-[var(--muted)] sm:text-3xl">On the clock…</p>
