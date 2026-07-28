@@ -6,6 +6,8 @@ import EventFrame from './EventFrame';
 import {
   laneOrder, countUpStat, facingFromDx, edgeFade, easeOut, clamp01,
   DASH_BEATS, cameraX, type Point,
+  cumulativeDist, easedPathPosition, nearestPlant, plantLean, plantRunCycleSec,
+  routeU, dashPhasePose, routeWalkInY, routeJogOffOffset,
 } from '../turnChoreo';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
@@ -127,129 +129,19 @@ function fortyPose(progress: number): AthletePose {
   return 'walk';
 }
 
-// --- 3-cone + shuttle: shared choreography helpers -------------------------
+// --- 3-cone + shuttle: shared choreography ----------------------------------
 // Both drills run in a single static frame (no camera pan — the whole route
 // fits on screen at once), reuse the walk-in / stance / jog-off beats from
 // DASH_BEATS, and turn the sprint+through window [0.28, 0.70] into a route
-// window the athlete travels the full waypoint path across.
+// window the athlete travels the full waypoint path across. The pure
+// geometry helpers driving this (smoothstep, easedPathPosition, nearestPlant,
+// plantLean, plantRunCycleSec, routeU, dashPhasePose, routeWalkInY,
+// routeJogOffOffset) live in `../turnChoreo` — they're generic over any
+// Point[] waypoint list, not specific to either drill, and living there puts
+// them alongside `pathPosition`/`DASH_BEATS` where `tests/choreo.test.ts`
+// already covers this kind of pure choreography math.
 
-/** Smooth "ease in, ease out" cubic (0 slope at both ends) — applied to
- * each waypoint segment's local progress so the runner decelerates into
- * every cone/line and re-accelerates out of it, instead of gliding through
- * corners at constant speed. This is what gives the 3-cone its hard plants
- * and the shuttle its explosive redirects "for free" from pure geometry. */
-function smoothstep(u: number): number {
-  const c = clamp01(u);
-  return c * c * (3 - 2 * c);
-}
-
-function cumulativeDist(waypoints: Point[]): number[] {
-  const dist = [0];
-  for (let i = 1; i < waypoints.length; i++) {
-    dist.push(dist[i - 1] + Math.hypot(waypoints[i].x - waypoints[i - 1].x, waypoints[i].y - waypoints[i - 1].y));
-  }
-  return dist;
-}
-
-/** Position + current-segment direction along a waypoint path at route
- * fraction `u` (0..1), with each segment's local progress smoothstep-eased
- * (see above) rather than linear. */
-function easedPathPosition(waypoints: Point[], cumDist: number[], u: number): Point & { dx: number; dy: number } {
-  const total = cumDist[cumDist.length - 1] || 1;
-  const target = clamp01(u) * total;
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const segStart = cumDist[i];
-    const segEnd = cumDist[i + 1];
-    if (target <= segEnd || i === waypoints.length - 2) {
-      const len = segEnd - segStart;
-      const local = len === 0 ? 0 : smoothstep((target - segStart) / len);
-      const a = waypoints[i];
-      const b = waypoints[i + 1];
-      return { x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local, dx: b.x - a.x, dy: b.y - a.y };
-    }
-  }
-  const last = waypoints[waypoints.length - 1];
-  return { ...last, dx: 0, dy: 0 };
-}
-
-/** Path-length distance to the nearest *interior* waypoint (a real plant —
- * endpoints are excluded, they're the start/finish, not a redirect) plus
- * the turn-direction sign there (cross product of the incoming/outgoing
- * unit directions: 0 for a straight-line reversal like a shuttle line or
- * the 3-cone's out-and-back leg, ±1 for an angular cut like the L-drill's
- * corners). Drives both the plant lean and the run-cycle slowdown. */
-function nearestPlant(waypoints: Point[], cumDist: number[], u: number): { dist: number; sign: number } {
-  const total = cumDist[cumDist.length - 1] || 1;
-  const target = clamp01(u) * total;
-  let dist = Infinity;
-  let sign = 0;
-  for (let i = 1; i < waypoints.length - 1; i++) {
-    const d = Math.abs(target - cumDist[i]);
-    if (d < dist) {
-      const prev = waypoints[i - 1];
-      const cur = waypoints[i];
-      const next = waypoints[i + 1];
-      const inLen = Math.hypot(cur.x - prev.x, cur.y - prev.y) || 1;
-      const outLen = Math.hypot(next.x - cur.x, next.y - cur.y) || 1;
-      const inX = (cur.x - prev.x) / inLen;
-      const inY = (cur.y - prev.y) / inLen;
-      const outX = (next.x - cur.x) / outLen;
-      const outY = (next.y - cur.y) / outLen;
-      dist = d;
-      sign = Math.sign(inX * outY - inY * outX);
-    }
-  }
-  return { dist, sign };
-}
-
-// Path-length units (in the shared percent-space) on either side of a
-// plant where the lean/cadence effects apply.
-const PLANT_WINDOW = 9;
 const PLANT_LEAN_DEG = 14;
-
-function plantLean(plant: { dist: number; sign: number }, maxDeg: number): number {
-  if (plant.dist >= PLANT_WINDOW) return 0;
-  return plant.sign * maxDeg * (1 - plant.dist / PLANT_WINDOW);
-}
-
-function plantRunCycleSec(plant: { dist: number }): number {
-  const proximity = clamp01(1 - plant.dist / PLANT_WINDOW);
-  return 0.42 + 0.24 * proximity;
-}
-
-/** Maps overall turn progress to route fraction 0..1 across the shared
- * stance-end -> official-reveal window ([0.28, 0.70] per DASH_BEATS). */
-function routeU(progress: number): number {
-  const { stance, official } = DASH_BEATS;
-  return clamp01((progress - stance[1]) / (official - stance[1]));
-}
-
-/** walk / stance / run / walk — the pose rhythm every dash drill shares. */
-function dashPhasePose(progress: number): AthletePose {
-  const { walkIn, stance, official } = DASH_BEATS;
-  if (progress < walkIn[1]) return 'walk';
-  if (progress < stance[1]) return 'stance';
-  if (progress < official) return 'run';
-  return 'walk';
-}
-
-/** Eases the athlete in from just below the stance mark during walk-in. */
-function routeWalkInY(progress: number, standY: number): number {
-  const { walkIn } = DASH_BEATS;
-  if (progress >= walkIn[1]) return standY;
-  const fromY = standY + 10;
-  const u = easeOut(clamp01(progress / walkIn[1]));
-  return fromY - (fromY - standY) * u;
-}
-
-/** A few more steps' drift past the finish line during jog-off, along the
- * route's final direction. */
-function routeJogOffOffset(progress: number, dirX: number, dirY: number, amount = 6): { dx: number; dy: number } {
-  const { jogOff } = DASH_BEATS;
-  if (progress < jogOff[0]) return { dx: 0, dy: 0 };
-  const u = easeOut(clamp01((progress - jogOff[0]) / (jogOff[1] - jogOff[0])));
-  return { dx: dirX * amount * u, dy: dirY * amount * u };
-}
 
 // --- 3-cone (L-drill) geometry ---------------------------------------------
 // Cone 1 at start, Cone 2 five yards on, Cone 3 five yards up from Cone 2.
@@ -263,7 +155,15 @@ const THREE_CONE_WAYPOINTS: Point[] = [
   THREE_CONE_C2,
   THREE_CONE_C1,
   THREE_CONE_C2,
-  { x: 62, y: 73 },
+  // Bow wide of C2 (x=68, off the C2->C3 line at x=62) before hooking up to
+  // C3 — a real L-drill hooks around the *outside* of the cone rather than
+  // running straight up the C2->C3 line. Keeping this waypoint collinear
+  // with C2->C3 (as the original (62,73) was) made nearestPlant read a
+  // straight-line reversal (sign 0) here — no lean, and the cadence-slowing
+  // "plant" window still fired in the middle of what should be an
+  // unbroken sprint, a visible hitch. Off the line, it registers as the
+  // genuine angular cut it visually is.
+  { x: 68, y: 73 },
   THREE_CONE_C3,
   { x: 66, y: 47 },
   { x: 62, y: 44 },
@@ -463,7 +363,7 @@ export default function DashScene(props: {
 
           return (
             <>
-              <div className="relative flex-1 px-4 pb-28 pt-6">
+              <div className="relative flex-1 overflow-hidden px-4 pb-28 pt-6">
                 <p className="display absolute left-4 top-4 text-[10px] text-[var(--muted)] sm:text-xs">
                   LANE {turnIndex + 1} / {lanes.length}
                 </p>
@@ -582,7 +482,7 @@ export default function DashScene(props: {
 
         return (
           <>
-            <div className="relative flex-1 px-4 pb-28 pt-6">
+            <div className="relative flex-1 overflow-hidden px-4 pb-28 pt-6">
               <p className="display absolute left-4 top-4 text-[10px] text-[var(--muted)] sm:text-xs">
                 LANE {turnIndex + 1} / {lanes.length}
               </p>
