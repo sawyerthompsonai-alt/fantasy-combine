@@ -46,7 +46,7 @@ export default function Broadcast({ room, now }: { room: PublicRoom; now: () => 
   });
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-8" style={{ containerType: 'inline-size' }}>
+    <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex items-center justify-between border-b border-[var(--line)] pb-3">
         <span className="display text-sm text-[var(--accent)]">● Live · Fantasy Draft Combine</span>
         <span className="stat text-sm text-[var(--muted)]">
