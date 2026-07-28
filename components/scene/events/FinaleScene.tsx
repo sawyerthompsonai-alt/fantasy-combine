@@ -118,10 +118,21 @@ export default function FinaleScene({
   // re-renders every animation frame via the broadcast's rAF clock, so a
   // fresh `[colors[champion]]` literal on every render would re-fire that
   // effect every frame and regenerate 120 random pieces continuously,
-  // restarting them from the top instead of letting them fall. Memoized so
-  // the array is only a new reference when the champion or palette actually
-  // changes.
-  const championConfettiColors = useMemo(() => [colors[champion]], [colors, champion]);
+  // restarting them from the top instead of letting them fall. Memoizing on
+  // `colors` itself isn't enough, though: `colors` is the raw `room.colors`
+  // prop, and Broadcast.tsx passes `room.colors` straight through from
+  // `useRoom`'s poll state, which is a *fresh array reference* on every poll
+  // (`setRoom(body)`) even when the contents are identical — so the old
+  // `[colors, champion]` dep list invalidated the memo on every poll too,
+  // snapping all 120 pieces back to the top mid-celebration (the `results`
+  // phase runs FINALE_RESULTS_MS = 6000ms against a 5000ms live poll
+  // interval, so almost every finale eats at least one restart). Same fix
+  // Broadcast.tsx applies to its own persistent confetti's `confettiColors`/
+  // `colorsKey` — derive a primitive key from the array's content
+  // (`colorsKey`, a plain string) and memoize on that plus `champion`, so a
+  // new array identity is only produced when the content actually changes.
+  const colorsKey = colors.join(',');
+  const championConfettiColors = useMemo(() => [colorsKey.split(',')[champion]], [colorsKey, champion]);
 
   if (phase === 'intro') {
     return (

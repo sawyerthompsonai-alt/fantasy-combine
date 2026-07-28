@@ -32,10 +32,13 @@ export interface EventFrameProps {
   /** Only invoked while phase === 'turn' — the per-event scene supplies the
    * actual choreography (path, prop, pose) for that one spotlighted rep. */
   renderTurn: (ctx: TurnRenderCtx) => ReactNode;
-  /** Results-phase leaderboard, e.g. `<Scoreboard mode="expanded" .../>`.
-   * When supplied, replaces this component's own inline ranking list
-   * (which still renders when the prop is absent, for backward
-   * compatibility with any caller that doesn't pass one). */
+  /** Results-phase leaderboard, e.g. `<Scoreboard mode="expanded" .../>`,
+   * rendered directly into the results-phase body. There is no inline
+   * fallback ranking list anymore — a caller that omits this prop gets an
+   * empty results panel (see the `results` branch below; the old fallback
+   * was dead code, removed per Task 16's review). Always supplied in
+   * production: Broadcast.tsx builds a populated `scoreboardNode` for every
+   * event's results phase and every EventFrame caller passes it through. */
   scoreboard?: ReactNode;
   /** Per-athlete comedy bios (Task 1/7's `athleteBios`) — drives the turn
    * walk-up subline. Absent renders no subline (e.g. any caller that
