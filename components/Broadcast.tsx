@@ -6,13 +6,18 @@ import { EVENT_META } from '@/lib/types';
 import DraftBoard from './DraftBoard';
 import Confetti from './Confetti';
 import LaneRace, { type EventStageProps } from './events/LaneRace';
-
-const RACE_TYPES = new Set(['forty', 'threecone', 'shuttle', 'champ40']);
+import Bench from './events/Bench';
+import Measure from './events/Measure';
+import Gauntlet from './events/Gauntlet';
 
 function EventStage(props: EventStageProps) {
-  if (RACE_TYPES.has(props.event.type)) return <LaneRace {...props} />;
-  // Task 13 adds bench/vertical/broad/gauntlet renderers here.
-  return <LaneRace {...props} />;
+  switch (props.event.type) {
+    case 'bench': return <Bench {...props} />;
+    case 'vertical':
+    case 'broad': return <Measure {...props} />;
+    case 'gauntlet': return <Gauntlet {...props} />;
+    default: return <LaneRace {...props} />;
+  }
 }
 
 export default function Broadcast({ room, now }: { room: PublicRoom; now: () => number }) {
