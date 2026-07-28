@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { deriveOutcomes } from '@/lib/outcomes';
 import {
-  buildTimeline, stateAt, lockedPicks,
+  buildTimeline, stateAt, lockedPicks, transitionAt,
   TITLE_MS, WALKUP_MS,
   INTRO_MS, TURN_MS, RESULTS_MS, ELIMINATION_MS, GAP_MS,
   FINALE_RUN_MS, FINALE_RESULTS_MS,
   FINALE_PICK2_LOCK_OFFSET_MS, FINALE_PICK1_LOCK_OFFSET_MS,
-  ELIMINATION_LOCK_OFFSET_MS,
+  ELIMINATION_LOCK_OFFSET_MS, WIPE_MS,
 } from '@/lib/timeline';
 
 const names12 = Array.from({ length: 12 }, (_, i) => `T${i}`);
@@ -225,5 +225,54 @@ describe('totalMs scaling', () => {
     // every pick 20..1 still locks exactly once, in descending order, by totalMs
     const all = lockedPicks(outcomes20, totalMs);
     expect(all.map(l => l.pick)).toEqual(Array.from({ length: 20 }, (_, i) => 20 - i));
+  });
+});
+
+describe('transitionAt (broadcast wipe windows)', () => {
+  it('is exactly t=0.5 at every gap end — the true segment boundary', () => {
+    const { gaps } = buildTimeline(outcomes);
+    expect(gaps.length).toBeGreaterThan(0);
+    gaps.forEach(g => {
+      const r = transitionAt(outcomes, g.endMs);
+      expect(r).not.toBeNull();
+      expect(r!.t).toBeCloseTo(0.5, 10);
+    });
+  });
+
+  it('hits the 0/1 boundaries exactly at each window\'s edges', () => {
+    const { gaps } = buildTimeline(outcomes);
+    gaps.forEach(g => {
+      const start = g.endMs - WIPE_MS / 2;
+      const end = g.endMs + WIPE_MS / 2;
+      expect(transitionAt(outcomes, start)!.t).toBeCloseTo(0, 10);
+      expect(transitionAt(outcomes, end)!.t).toBeCloseTo(1, 10);
+    });
+  });
+
+  it('is null just outside every window, and at a point far from any gap', () => {
+    const { gaps, segments } = buildTimeline(outcomes);
+    gaps.forEach(g => {
+      const start = g.endMs - WIPE_MS / 2;
+      const end = g.endMs + WIPE_MS / 2;
+      expect(transitionAt(outcomes, start - 1)).toBeNull();
+      expect(transitionAt(outcomes, end + 1)).toBeNull();
+    });
+    const turn0 = segments.find(s => s.eventIndex === 0 && s.phase === 'turn')!;
+    expect(transitionAt(outcomes, turn0.startMs + (turn0.endMs - turn0.startMs) / 2)).toBeNull();
+  });
+
+  it('produces exactly one non-overlapping window per gap — no more, no fewer', () => {
+    const { gaps, totalMs } = buildTimeline(outcomes);
+    // Scan the whole timeline in steps fine enough to catch every WIPE_MS-
+    // wide window, counting contiguous non-null runs.
+    const step = WIPE_MS / 4;
+    let windows = 0;
+    let wasNull = true;
+    for (let t = 0; t <= totalMs + WIPE_MS; t += step) {
+      const r = transitionAt(outcomes, t);
+      if (r !== null && wasNull) windows++;
+      wasNull = r === null;
+    }
+    expect(windows).toBe(gaps.length);
   });
 });

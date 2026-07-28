@@ -4,7 +4,7 @@ import LowerThird from '../LowerThird';
 import { EVENT_META, type EventResult } from '@/lib/types';
 import type { EventPhase } from '@/lib/timeline';
 import type { AthleteBio } from '@/lib/jokes';
-import { laneOrder, walkUpSubline } from '../turnChoreo';
+import { laneOrder, walkUpSubline, easeOut, clamp01 } from '../turnChoreo';
 
 export interface TurnRenderCtx {
   athlete: number;
@@ -63,12 +63,36 @@ export default function EventFrame({
   const lanes = laneOrder(event.competitors);
 
   if (phase === 'intro') {
+    // No-teleport walk-in (Task 15): each lane walks on from the left
+    // sideline instead of popping in place. The lineup renders in normal
+    // flex-wrap flow (not absolute % coordinates, unlike the per-event
+    // turn choreography), so "from the sideline" here is a px offset
+    // applied via transform — same convention ShowOpen's walk-up uses
+    // (WALK_OFFSET_PX) — rather than a stage-relative percentage, which
+    // wouldn't mean anything against a flex layout.
+    //
+    // Stagger start times scale with lane count (0.5 of phaseDurationMs
+    // spread across all lanes) so the *last* lane always has its full
+    // travel window left before the intro phase ends, however many
+    // competitors are lined up (as few as 2, as many as a full field).
+    // Pure function of (phaseElapsedMs, phaseDurationMs, lane index) — no
+    // timers, no CSS animation-delay tied to mount time — so a late joiner
+    // lands on exactly the walk-in frame a continuous viewer would see.
+    const staggerMs = phaseDurationMs > 0 ? (0.5 * phaseDurationMs) / Math.max(lanes.length, 1) : 0;
+    const travelMs = phaseDurationMs * 0.35;
     return (
       <>
         <div className="flex flex-1 flex-wrap content-center items-center justify-center gap-4 px-4 pb-28 pt-6 sm:gap-6">
-          {lanes.map(a => (
-            <Athlete key={a} name={names[a]} color={colors[a]} pose="idle" size={72} />
-          ))}
+          {lanes.map((a, i) => {
+            const startMs = i * staggerMs;
+            const u = travelMs > 0 ? clamp01((phaseElapsedMs - startMs) / travelMs) : 1;
+            const eased = easeOut(u);
+            return (
+              <div key={a} style={{ transform: `translateX(${-90 * (1 - eased)}px)`, opacity: eased }}>
+                <Athlete name={names[a]} color={colors[a]} pose={u >= 1 ? 'idle' : 'walk'} size={72} />
+              </div>
+            );
+          })}
         </div>
         <LowerThird
           visible
@@ -99,9 +123,10 @@ export default function EventFrame({
                 return (
                   <li
                     key={a}
-                    className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
+                    className={`row-in flex items-center gap-3 rounded-md border px-3 py-2 ${
                       eliminated ? 'border-red-500/40 bg-red-950/20' : 'border-[var(--line)] bg-[var(--panel)]/90'
                     }`}
+                    style={{ animationDelay: `${i * 40}ms` }}
                   >
                     <span className="stat w-6 text-right text-[var(--muted)]">{i + 1}</span>
                     <Athlete name={names[a]} color={colors[a]} pose="idle" size={40} showName={false} dimmed={eliminated} />
@@ -135,8 +160,10 @@ export default function EventFrame({
     <>
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 pb-28 pt-6">
         <div className="flex flex-wrap items-center justify-center gap-6">
-          {cut.map(a => (
-            <Athlete key={a} name={names[a]} color={colors[a]} pose="idle" size={96} dimmed />
+          {cut.map((a, i) => (
+            <div key={a} className="row-in" style={{ animationDelay: `${i * 40}ms` }}>
+              <Athlete name={names[a]} color={colors[a]} pose="idle" size={96} dimmed />
+            </div>
           ))}
         </div>
         {roast && (

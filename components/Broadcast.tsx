@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { PublicRoom } from '@/lib/rooms';
-import { lockedPicks, stateAt, type BroadcastState, type EventPhase } from '@/lib/timeline';
+import { lockedPicks, stateAt, transitionAt, type BroadcastState, type EventPhase } from '@/lib/timeline';
 import { scoreboardAt, leaderAt, leaderChangedRecently } from '@/lib/scoreboard';
 import type { EventResult } from '@/lib/types';
 import { athleteBios, farewellLine, type AthleteBio } from '@/lib/jokes';
@@ -12,6 +12,7 @@ import { STAT_REVEAL_FRACTION, SPRINT_START_FRAC, FINALE_GUN_FRACTION } from './
 import Field, { type SceneSet } from './scene/Field';
 import ShowOpen from './scene/ShowOpen';
 import BoardInterstitial from './scene/BoardInterstitial';
+import WipeOverlay from './scene/WipeOverlay';
 import Scoreboard from './Scoreboard';
 import DashScene from './scene/events/DashScene';
 import JumpScene from './scene/events/JumpScene';
@@ -77,6 +78,11 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
   const elapsed = replay ? nowMs - mountTime : now() - (room.startTime ?? now());
   const state = stateAt(outcomes, elapsed);
   const locks = lockedPicks(outcomes, elapsed);
+  // Broadcast wipe (Task 15): non-null for a WIPE_MS window straddling each
+  // inter-block gap's end — see lib/timeline.ts's transitionAt. Pure
+  // function of (outcomes, elapsed), so a late joiner lands on the correct
+  // sweep position instead of a replayed animation.
+  const wipe = transitionAt(outcomes, elapsed);
   const allLocked = locks.length === room.names.length;
 
   // Joke seed: `room.seedHash` (not `room.seed`, which is only revealed once
@@ -231,19 +237,32 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
         )}
 
         {state.kind === 'event' && event && (
-          <EventScene
-            event={event}
-            names={room.names}
-            colors={room.colors}
-            phase={state.phase}
-            phaseElapsedMs={state.phaseElapsedMs}
-            phaseDurationMs={state.phaseDurationMs}
-            turnIndex={state.turnIndex}
-            athlete={state.athlete}
-            scoreboard={scoreboardNode}
-            bios={bios}
-            roast={roast}
-          />
+          // Phase crossfade (Task 15): a keyed wrapper remounts on every
+          // phase change (and every turn->turn change within a phase, via
+          // the turnIndex segment of the key) so `.fade-in-phase`'s 280ms
+          // opacity animation replays — a quick crossfade instead of a hard
+          // cut between segments. Opacity-only (see globals.css) so this
+          // wrapper never becomes a transform containing block for
+          // LowerThird (`fixed`) or TrackLines (`absolute inset-0`, the
+          // Task 5/13 trap) nested inside EventScene.
+          <div
+            key={`${state.eventIndex}:${state.phase}:${state.turnIndex ?? ''}`}
+            className="flex flex-1 flex-col fade-in-phase"
+          >
+            <EventScene
+              event={event}
+              names={room.names}
+              colors={room.colors}
+              phase={state.phase}
+              phaseElapsedMs={state.phaseElapsedMs}
+              phaseDurationMs={state.phaseDurationMs}
+              turnIndex={state.turnIndex}
+              athlete={state.athlete}
+              scoreboard={scoreboardNode}
+              bios={bios}
+              roast={roast}
+            />
+          </div>
         )}
 
         {state.kind === 'final' && (
@@ -311,6 +330,8 @@ export default function Broadcast({ room, now, replay = false }: { room: PublicR
       </header>
 
       {allLocked && <Confetti colors={room.colors} />}
+
+      {wipe && <WipeOverlay t={wipe.t} />}
     </div>
   );
 }

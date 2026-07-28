@@ -93,6 +93,37 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Task 15: phase crossfade — a one-shot 280ms opacity fade on mount,
+ * applied to a wrapper keyed on `${eventIndex}:${phase}:${turnIndex}` (see
+ * Broadcast.tsx). Deliberately opacity-only (no transform): a `transform`
+ * here would make the wrapper a new containing block for any `position:
+ * fixed` descendant (LowerThird) and, more importantly, for TrackLines'
+ * `absolute inset-0` (Task 5/13's trap) if it ever sits inside this
+ * wrapper. Late joiners replay this once on mount — acceptable, the
+ * content underneath is already the correct frame regardless of where the
+ * fade itself is. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in-phase {
+  animation: fade-in 280ms ease-out;
+}
+
+/* Task 15: staggered row entrance for EventFrame's results/elimination
+ * lists — a small fade+slide, `animation-delay` staggered per row index
+ * (40ms/row) by the caller. Also opacity+translateY only, same
+ * no-transform-on-ancestor reasoning as `.fade-in-phase` above (not that
+ * TrackLines ever lives under these particular rows, but the pattern is
+ * worth keeping consistent). */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.row-in {
+  animation: row-in 320ms ease-out both;
+}
+
 /* Athlete skeletal poses. Each pose class lives on the outer <g>; leg/arm
  * groups are addressed as descendants so every pose can drive them
  * independently. No JS timers involved — purely CSS keyframe loops keyed

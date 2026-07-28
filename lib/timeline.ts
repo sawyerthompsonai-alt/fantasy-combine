@@ -127,6 +127,35 @@ export function stateAt(outcomes: Outcomes, elapsedMs: number): BroadcastState {
   };
 }
 
+/** Duration (ms) of the broadcast wipe that plays across every inter-block
+ * gap (see `buildTimeline`'s `gaps`) — the diagonal band in
+ * `components/scene/WipeOverlay.tsx`. */
+export const WIPE_MS = 1200;
+
+/**
+ * Non-null while `elapsedMs` sits inside a wipe window: one window per gap,
+ * straddling that gap's END (i.e. the next block's start) so the wipe is
+ * fully covering the viewport exactly at the segment boundary — the old
+ * scene wipes out on the way in, the new scene is already underneath and
+ * wipes into view on the way out. `t` runs 0 (window open) -> 0.5 (exactly
+ * at the boundary) -> 1 (window closed), a pure function of
+ * (outcomes, elapsedMs) so a late joiner who lands mid-wipe sees the
+ * correct sweep position, not a replayed animation. `null` outside every
+ * window (the overwhelmingly common case — windows are WIPE_MS wide against
+ * gaps/events that run for seconds).
+ */
+export function transitionAt(outcomes: Outcomes, elapsedMs: number): { t: number } | null {
+  const { gaps } = buildTimeline(outcomes);
+  for (const g of gaps) {
+    const start = g.endMs - WIPE_MS / 2;
+    const end = g.endMs + WIPE_MS / 2;
+    if (elapsedMs >= start && elapsedMs <= end) {
+      return { t: (elapsedMs - start) / WIPE_MS };
+    }
+  }
+  return null;
+}
+
 export function lockedPicks(outcomes: Outcomes, elapsedMs: number): { pick: number; athlete: number }[] {
   const { segments } = buildTimeline(outcomes);
   const locks: { pick: number; athlete: number }[] = [];
