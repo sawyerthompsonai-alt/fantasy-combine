@@ -92,7 +92,23 @@ export function leaderAt(outcomes: Outcomes, elapsedMs: number): number | undefi
  * no stored state: a viewer who joins mid-window still derives the same
  * true/false a continuous viewer would at that instant, so the "NEW
  * LEADER" flash it drives reads correctly for late joiners and replays
- * alike. */
+ * alike.
+ *
+ * NOTE: `leaderAt` (both calls below) reads whatever event `elapsedMs`
+ * falls in via `scoreboardAt`/`stateAt` — this function doesn't itself
+ * pin `now` and `elapsedMs - windowMs` to the *same* event, so in
+ * principle a fast-enough event boundary could diff two different events'
+ * leaders. That's safe today only by construction, not by an enforced
+ * invariant: the earliest an event's board can have a leader at all is
+ * `INTRO_MS + ceil(TURN_MS * STAT_REVEAL_FRACTION)` = 3000 + 2800 =
+ * 5800ms into that event (see lib/timeline.ts), which is always >=
+ * `windowMs` (600ms) past the event's start — so `elapsedMs - windowMs`
+ * can never reach back past the *previous* event's own leader while
+ * `elapsedMs` sits at a genuine first-leader instant of the current one.
+ * If `windowMs`, `INTRO_MS`, or `TURN_MS`/`STAT_REVEAL_FRACTION` ever
+ * change such that this margin shrinks to zero or below, this function
+ * needs to scope both `leaderAt` calls to the same `eventIndex` (from
+ * `stateAt`) rather than relying on elapsed-time arithmetic alone. */
 export function leaderChangedRecently(outcomes: Outcomes, elapsedMs: number, windowMs = 600): boolean {
   const now = leaderAt(outcomes, elapsedMs);
   const before = leaderAt(outcomes, elapsedMs - windowMs);

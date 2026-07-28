@@ -170,6 +170,25 @@ describe('leaderChangedRecently', () => {
     expect(leaderChangedRecently(outcomes, turn0.endMs)).toBe(false);
   });
 
+  it('is false at a turn\'s first-reveal instant specifically, where leaderAt(elapsed-600) is undefined — pins the "both sides defined" guard', () => {
+    // This is the case the guard exists for and the one the other two tests
+    // above don't actually exercise: turn0.endMs (well past the reveal) and
+    // elapsed=0 (both sides undefined) both happen to read `now === before`
+    // even with the guard stripped out, so an unguarded `now !== before`
+    // would still pass them. Right at the reveal instant, `now` (the
+    // athlete's own mark, just posted) is defined while `before` (600ms
+    // earlier, still pre-reveal) is undefined — an unguarded diff sees
+    // `athlete !== undefined` and spuriously reports true. Confirmed this
+    // by hand: swapping leaderChangedRecently's body for the unguarded
+    // `now !== before` makes this exact assertion fail.
+    const turn0 = segments.find(s => s.eventIndex === 0 && s.phase === 'turn' && s.turnIndex === 0)!;
+    const dur = turn0.endMs - turn0.startMs;
+    const revealMs = turn0.startMs + Math.ceil(dur * STAT_REVEAL_FRACTION);
+    expect(leaderAt(outcomes, revealMs - 600)).toBeUndefined();
+    expect(leaderAt(outcomes, revealMs)).toBeDefined();
+    expect(leaderChangedRecently(outcomes, revealMs)).toBe(false);
+  });
+
   it('is false at the very start of the show (both sides undefined)', () => {
     expect(leaderChangedRecently(outcomes, 0)).toBe(false);
   });

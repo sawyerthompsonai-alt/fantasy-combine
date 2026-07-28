@@ -40,8 +40,18 @@ function DockedBoard({ data, names, colors, leaderChangedRecently }: Omit<Scoreb
 
   return (
     <div className="fixed right-3 top-16 z-30 hidden w-[190px] flex-col overflow-hidden rounded-md border border-[var(--accent)]/50 bg-[var(--panel)]/95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-sm sm:flex">
-      <div className="relative flex items-center justify-between gap-1.5 overflow-hidden border-b border-[var(--line)] px-2.5 py-1.5">
-        <span className="display truncate text-[10px] text-[var(--accent)]">{data.label}</span>
+      {/* Normal flex flow (not an absolutely-positioned overlay) — a prior
+          version painted the chip `absolute inset-y-0 right-0` over this
+          same row, which completely covered the round pill any time both
+          were visible at once (round 2+ during a genuine mid-round leader
+          flip). Flowing it as a sibling after the round pill instead means
+          it takes its own space rather than covering anyone else's; the
+          slide-in motion still reads because the row itself has
+          `overflow-hidden` — the chip's `translateX(105%)` start pushes it
+          out past the row's own right edge (clipped), sliding back into its
+          reserved layout slot. */}
+      <div className="flex items-center gap-1.5 overflow-hidden border-b border-[var(--line)] px-2.5 py-1.5">
+        <span className="display min-w-0 flex-1 truncate text-[10px] text-[var(--accent)]">{data.label}</span>
         {data.round !== undefined && data.round > 1 && (
           <span className="display shrink-0 rounded border border-[var(--line)] px-1 py-0.5 text-[8px] text-[var(--muted)]">
             RD {data.round}
@@ -51,7 +61,7 @@ function DockedBoard({ data, names, colors, leaderChangedRecently }: Omit<Scoreb
           <span
             key={leader}
             aria-hidden
-            className="new-leader-chip display pointer-events-none absolute inset-y-0 right-0 flex items-center rounded-l-sm bg-[var(--accent)] px-2 text-[9px] font-extrabold tracking-wider text-[var(--bg)]"
+            className="new-leader-chip display shrink-0 flex items-center rounded-sm bg-[var(--accent)] px-1.5 py-0.5 text-[8px] font-extrabold tracking-wider text-[var(--bg)]"
           >
             NEW LEADER
           </span>
