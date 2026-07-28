@@ -69,7 +69,7 @@ export default function FinaleScene({
               <div
                 key={a}
                 className="absolute"
-                style={{ left: `${travelPct}%`, top: `${26 + i * 36}%`, transform: 'translateX(-50%)', transition: 'left 100ms linear' }}
+                style={{ left: `${travelPct}%`, top: `${26 + i * 36}%`, transform: 'translateX(-50%)' }}
               >
                 <Athlete name={names[a]} color={colors[a]} pose="run" size={80} spotlight />
               </div>

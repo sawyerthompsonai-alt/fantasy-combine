@@ -5,6 +5,7 @@ import type { PublicRoom } from '@/lib/rooms';
 import { lockedPicks, stateAt, type EventPhase } from '@/lib/timeline';
 import type { EventResult } from '@/lib/types';
 import { sound } from '@/lib/sound';
+import { useAnimationNow } from '@/lib/useAnimationNow';
 import { STAT_REVEAL_FRACTION } from './scene/turnChoreo';
 import Field from './scene/Field';
 import BoardInterstitial from './scene/BoardInterstitial';
@@ -36,24 +37,16 @@ function EventScene(props: EventSceneProps) {
 }
 
 export default function Broadcast({ room, now, replay = false }: { room: PublicRoom; now: () => number; replay?: boolean }) {
-  const [, tick] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
   // Replay's local clock: elapsed runs from 0 as of mount, ignoring
   // startTime/serverNow entirely. `Date.now()` is only ever read inside the
-  // interval effect below (never during render) to keep the component pure;
-  // `mountTime`/`replayNowMs` are the render-safe snapshots of it.
+  // rAF loop in useAnimationNow (never during render) to keep the component
+  // pure; `mountTime`/`nowMs` are the render-safe snapshots of it.
   const [mountTime] = useState(() => Date.now());
-  const [replayNowMs, setReplayNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => {
-      tick(x => x + 1);
-      setReplayNowMs(Date.now());
-    }, 100);
-    return () => clearInterval(t);
-  }, []);
+  const nowMs = useAnimationNow();
 
   const outcomes = room.outcomes!;
-  const elapsed = replay ? replayNowMs - mountTime : now() - (room.startTime ?? now());
+  const elapsed = replay ? nowMs - mountTime : now() - (room.startTime ?? now());
   const state = stateAt(outcomes, elapsed);
   const locks = lockedPicks(outcomes, elapsed);
   const allLocked = locks.length === room.names.length;

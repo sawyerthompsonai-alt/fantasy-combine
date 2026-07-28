@@ -104,7 +104,6 @@ export default function DashScene(props: {
                   top: `${pos.y}%`,
                   transform: 'translate(-50%, -100%)',
                   opacity,
-                  transition: 'left 100ms linear, top 100ms linear, opacity 200ms linear',
                 }}
               >
                 <Athlete name={names[a]} color={colors[a]} pose={poseFor(event.type)} size={84} facing={facing} spotlight />
