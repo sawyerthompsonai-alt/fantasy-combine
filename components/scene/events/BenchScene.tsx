@@ -1,5 +1,4 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
 import Athlete, { type AthletePose } from '../Athlete';
 import LowerThird from '../LowerThird';
 import EventFrame from './EventFrame';
@@ -16,6 +15,22 @@ import type { EventPhase } from '@/lib/timeline';
 // with more furniture. Every coordinate below is a point in this box.
 const BOX_W = 300;
 const BOX_H = 172;
+
+// Every geometry constant above is a point/length in that 300x172 space.
+// Rather than rendering them as raw px in a fixed-size box (which clips on
+// short/narrow stages) or measuring a scale factor in JS and applying
+// `transform: scale()` (which has a first-paint frame at native size before
+// the measurement lands — a real, reproducible pop/clip on phones, since
+// the corrective effect only runs after the initial paint), every value is
+// converted to a container-query length: `cqw(x)` -> "x/300 of the query
+// container's width", `cqh(y)` -> "y/172 of its height". The container is
+// established below (`containerType: 'size'` on the sizer box), sized to
+// never exceed 300x172 but shrink-to-fit when the stage is smaller — so
+// cqw/cqh already encode the "shrink to fit, never clip" behavior natively,
+// resolved by the browser during layout (before the very first paint),
+// with no JS measurement step and nothing to correct after the fact.
+const cqw = (px: number) => `${(px / BOX_W) * 100}cqw`;
+const cqh = (px: number) => `${(px / BOX_H) * 100}cqh`;
 
 const FLOOR_Y = 158; // ground line — spotter's feet, athlete's feet pre/post lift
 const HEAD_X = 70; // bench head end (rack side)
@@ -90,33 +105,29 @@ function BenchPlate({ cx }: { cx: number }) {
   );
 }
 
-/** Furniture/athlete/barbell rig, scaled to fit the available stage —
- * CSS-only, no SVG/foreignObject (WebKit has a documented history of
+/** Furniture/athlete/barbell rig, scaled to fit the available stage — pure
+ * CSS, no SVG/foreignObject (WebKit has a documented history of
  * foreignObject quirks with absolutely-positioned HTML children and with
- * reflow on viewport changes, exactly what this rig would stress on iOS
- * Safari's URL-bar show/hide and orientation changes; this is a party app
- * people watch on phones, so that risk isn't worth taking).
+ * reflow on viewport changes) and no JS measurement step of any kind (a
+ * ResizeObserver-driven `transform: scale()` was tried and rejected: its
+ * `useState`/`useEffect` correction runs *after* the first paint, so there
+ * is a guaranteed frame — on every mount, i.e. essentially any phone join —
+ * where the rig renders at native 300x172 before the effect corrects it,
+ * overflowing/clipping exactly like the original bug, just transiently).
  *
- * Two nested boxes:
- *  - the "sizer" — a plain div sized via `aspect-ratio` + a container-query
- *    `width: min(native, 100cqw, height-budget-converted-to-width)`, i.e.
- *    the standard object-fit:contain recipe for replaced elements, applied
- *    here to reserve the correct on-screen footprint. Never exceeds the
- *    native BOX_W — desktop, where the stage is much bigger than that,
- *    renders unscaled and pixel-identical to before.
- *  - the "rig" — position:absolute inset-0 inside the sizer (so its fixed
- *    300x172 size can never feed back into the sizer's own sizing — no
- *    circular growth), holding every child completely unchanged from the
- *    original fixed-px implementation, `transform: scale(...)`-ed down by
- *    the ratio between the sizer's *actual measured* rendered width and
- *    BOX_W. That ratio can't be expressed in pure CSS without dividing two
- *    same-unit lengths in calc() — a feature not reliably available in
- *    Safari — so it's the one piece measured in JS (ResizeObserver, watching
- *    only the sizer's own box, not the viewport), same technique every
- *    other "scale an SVG/canvas/video to fit" component uses. `transform:
- *    scale` is layout-inert (doesn't participate in progress-driven motion,
- *    doesn't animate/transition) — it only ever changes in response to the
- *    stage resizing, never as a function of `progress`. */
+ * Instead, every child below is positioned/sized with `cqw`/`cqh` (see the
+ * helpers above BOX_W/BOX_H) rather than raw px. Those are container-query
+ * length units, resolved relative to the "sizer" div's own box — sized via
+ * `aspect-ratio` + a container-query width formula (querying the *stage*,
+ * one container out) that never exceeds native 300x172 but shrinks to fit
+ * when the stage is smaller. Because container-query units are resolved
+ * during layout, before paint, there is no separate "measure, then correct"
+ * pass and therefore no wrong first frame — the very first paint is already
+ * correctly scaled. The sizer establishes its own `containerType: 'size'`
+ * so every descendant's cqw/cqh — furniture position *and* size, and each
+ * `<Athlete>`'s own footprint via its string `size` prop (see Athlete.tsx)
+ * — scales uniformly together, matching what the (now-removed) `transform:
+ * scale()` gave visually, just resolved natively instead of in JS. */
 function BenchApparatus(props: {
   spotterX: number;
   centerX: number; centerY: number; rotationDeg: number; pose: AthletePose; facing: 'left' | 'right';
@@ -124,86 +135,66 @@ function BenchApparatus(props: {
   barX: number; barY: number; flexDeg: number; shakeX: number;
 }) {
   const { spotterX, centerX, centerY, rotationDeg, pose, facing, name, color, barX, barY, flexDeg, shakeX } = props;
-  const sizerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const el = sizerRef.current;
-    if (!el) return;
-    const update = () => {
-      const w = el.getBoundingClientRect().width;
-      setScale(w > 0 ? w / BOX_W : 1);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   return (
     <div
-      ref={sizerRef}
       className="relative"
       style={{
         width: `min(${BOX_W}px, 100cqw, calc(100cqh * ${BOX_W} / ${BOX_H}))`,
         aspectRatio: `${BOX_W} / ${BOX_H}`,
+        containerType: 'size',
       }}
     >
+      {/* rubber floor is WeightRoom's job — this box only holds furniture */}
+
+      {/* bench rack posts (head end) */}
       <div
-        className="absolute left-0 top-0"
-        style={{ width: BOX_W, height: BOX_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}
-      >
-        {/* rubber floor is WeightRoom's job — this box only holds furniture */}
+        className="absolute rounded-sm bg-[#2b2f38]"
+        style={{ left: cqw(RACK_X1), top: cqh(RACK_TOP_Y), width: cqw(5), height: cqh(FLOOR_Y - RACK_TOP_Y) }}
+      />
+      <div
+        className="absolute rounded-sm bg-[#2b2f38]"
+        style={{ left: cqw(RACK_X2), top: cqh(RACK_TOP_Y), width: cqw(5), height: cqh(FLOOR_Y - RACK_TOP_Y) }}
+      />
+      <div
+        className="absolute rounded-sm bg-[#3a3f4a]"
+        style={{ left: cqw(RACK_X1 - 2), top: cqh(RACK_TOP_Y + 4), width: cqw(20), height: cqh(5) }}
+      />
 
-        {/* bench rack posts (head end) */}
-        <div
-          className="absolute rounded-sm bg-[#2b2f38]"
-          style={{ left: RACK_X1, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
-        />
-        <div
-          className="absolute rounded-sm bg-[#2b2f38]"
-          style={{ left: RACK_X2, top: RACK_TOP_Y, width: 5, height: FLOOR_Y - RACK_TOP_Y }}
-        />
-        <div
-          className="absolute rounded-sm bg-[#3a3f4a]"
-          style={{ left: RACK_X1 - 2, top: RACK_TOP_Y + 4, width: 20, height: 5 }}
-        />
-
-        {/* spotter, standing behind the bench head */}
-        <div className="absolute -translate-x-1/2" style={{ left: spotterX, bottom: BOX_H - FLOOR_Y }}>
-          <Athlete name="Spotter" color="#5a6170" pose="idle" size={64} dimmed showName={false} />
-        </div>
-
-        {/* bench pad + legs */}
-        <div
-          className="absolute rounded-md bg-[#23262d] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-          style={{ left: HEAD_X, top: BENCH_TOP_Y, width: FOOT_X - HEAD_X, height: BENCH_THICK }}
-        />
-        <div className="absolute bg-[#15171c]" style={{ left: HEAD_X + 8, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
-        <div className="absolute bg-[#15171c]" style={{ left: FOOT_X - 14, top: BENCH_TOP_Y + BENCH_THICK, width: 6, height: FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK) }} />
-
-        {/* athlete: rotates from standing (walk-in) to lying flat on the bench */}
-        <div
-          className="absolute"
-          style={{ left: centerX, top: centerY, transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)` }}
-        >
-          <Athlete name={name} color={color} pose={pose} size={ATH_SIZE} facing={facing} showName={false} spotlight />
-        </div>
-
-        {/* barbell: bar + two 45-plate pairs */}
-        <svg
-          className="absolute overflow-visible"
-          style={{
-            left: barX, top: barY, width: 160, height: 40,
-            transform: `translate(-50%, -50%) rotate(${flexDeg}deg) translateX(${shakeX}px)`,
-          }}
-          viewBox="0 0 160 40"
-        >
-          <line x1="14" y1="20" x2="146" y2="20" stroke="#8a93a3" strokeWidth="4" strokeLinecap="round" />
-          <BenchPlate cx={14} />
-          <BenchPlate cx={146} />
-        </svg>
+      {/* spotter, standing behind the bench head */}
+      <div className="absolute -translate-x-1/2" style={{ left: cqw(spotterX), bottom: cqh(BOX_H - FLOOR_Y) }}>
+        <Athlete name="Spotter" color="#5a6170" pose="idle" size={cqh(64)} dimmed showName={false} />
       </div>
+
+      {/* bench pad + legs */}
+      <div
+        className="absolute rounded-md bg-[#23262d] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+        style={{ left: cqw(HEAD_X), top: cqh(BENCH_TOP_Y), width: cqw(FOOT_X - HEAD_X), height: cqh(BENCH_THICK) }}
+      />
+      <div className="absolute bg-[#15171c]" style={{ left: cqw(HEAD_X + 8), top: cqh(BENCH_TOP_Y + BENCH_THICK), width: cqw(6), height: cqh(FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK)) }} />
+      <div className="absolute bg-[#15171c]" style={{ left: cqw(FOOT_X - 14), top: cqh(BENCH_TOP_Y + BENCH_THICK), width: cqw(6), height: cqh(FLOOR_Y - (BENCH_TOP_Y + BENCH_THICK)) }} />
+
+      {/* athlete: rotates from standing (walk-in) to lying flat on the bench */}
+      <div
+        className="absolute"
+        style={{ left: cqw(centerX), top: cqh(centerY), transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)` }}
+      >
+        <Athlete name={name} color={color} pose={pose} size={cqh(ATH_SIZE)} facing={facing} showName={false} spotlight />
+      </div>
+
+      {/* barbell: bar + two 45-plate pairs */}
+      <svg
+        className="absolute overflow-visible"
+        style={{
+          left: cqw(barX), top: cqh(barY), width: cqw(160), height: cqh(40),
+          transform: `translate(-50%, -50%) rotate(${flexDeg}deg) translateX(${cqw(shakeX)})`,
+        }}
+        viewBox="0 0 160 40"
+      >
+        <line x1="14" y1="20" x2="146" y2="20" stroke="#8a93a3" strokeWidth="4" strokeLinecap="round" />
+        <BenchPlate cx={14} />
+        <BenchPlate cx={146} />
+      </svg>
     </div>
   );
 }
@@ -303,9 +294,10 @@ export default function BenchScene(props: {
                   query container sized purely by flex-1 (contain:size — its
                   own size is never influenced by BenchApparatus's content),
                   which BenchApparatus's sizer box below queries via cqw/cqh
-                  to shrink-to-fit without ever exceeding native size. Plain
-                  CSS + a JS-measured `transform: scale()` — no SVG/
-                  foreignObject. See BenchApparatus for the full rationale. */}
+                  to shrink-to-fit without ever exceeding native size. Pure
+                  CSS, resolved during layout before the first paint — no
+                  SVG/foreignObject and no JS measurement step. See
+                  BenchApparatus for the full rationale. */}
               <div className="flex h-full min-w-0 items-center justify-center">
                 <BenchApparatus
                   spotterX={spotterX}

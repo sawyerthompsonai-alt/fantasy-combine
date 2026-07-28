@@ -9,8 +9,12 @@ export interface AthleteProps {
   name: string;
   color: string;
   pose: AthletePose;
-  /** Rendered height in px. Figure is ~70-90px tall by default. */
-  size?: number;
+  /** Rendered height. A plain number is px (the common case, ~70-90px tall
+   * by default). A string is used as the CSS `height` value verbatim (e.g.
+   * a container-query length like `"48cqh"`) — width is then derived via
+   * `aspect-ratio` instead of a JS-computed px width, so the figure can
+   * scale with a fluid container without any JS measurement. */
+  size?: number | string;
   /** Which way the figure faces / travels. Mirrors the rig. */
   facing?: 'left' | 'right';
   /** Eliminated / inactive — fades the figure and its name chip. */
@@ -41,14 +45,15 @@ export default function Athlete({
   runCycleSec = 0.42,
   className = '',
 }: AthleteProps) {
-  const width = size * (44 / 92);
+  const sizeStyle = typeof size === 'number'
+    ? { width: size * (44 / 92), height: size }
+    : { height: size, aspectRatio: '44 / 92' };
 
   return (
     <div className={`inline-flex flex-col items-center gap-1 transition-opacity duration-300 ${dimmed ? 'opacity-40' : 'opacity-100'} ${className}`}>
       <div
         style={{
-          width,
-          height: size,
+          ...sizeStyle,
           transform: facing === 'left' ? 'scaleX(-1)' : undefined,
           ['--run-cycle' as string]: `${runCycleSec}s`,
         }}
